@@ -1,0 +1,165 @@
+import React, { useState } from 'react';
+import { X, Check, ShoppingBag, ArrowRight } from 'lucide-react';
+import { Product, ProductColor } from '../types';
+import { ImagePlaceholder } from './ImagePlaceholder';
+
+interface QuickViewModalProps {
+  product: Product | null;
+  onClose: () => void;
+  onAddToCart: (product: Product, size: string, color: ProductColor) => void;
+  onViewDetails: (product: Product) => void;
+  onUpdateProductImage?: (productId: string, imageUrl: string) => void;
+}
+
+export const QuickViewModal: React.FC<QuickViewModalProps> = ({
+  product,
+  onClose,
+  onAddToCart,
+  onViewDetails,
+  onUpdateProductImage
+}) => {
+  if (!product) return null;
+
+  const [selectedSize, setSelectedSize] = useState<string>(product.sizes[0] || 'M');
+  const [selectedColor, setSelectedColor] = useState<ProductColor>(product.colors[0] || { name: 'Black', hex: '#000' });
+  const [added, setAdded] = useState(false);
+
+  const formattedPrice = new Intl.NumberFormat('en-RW', {
+    style: 'currency',
+    currency: 'RWF',
+    maximumFractionDigits: 0
+  }).format(product.price);
+
+  const handleAdd = () => {
+    onAddToCart(product, selectedSize, selectedColor);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-[#121212] border border-[#2A2A2A] w-full max-w-3xl rounded-none shadow-2xl overflow-hidden relative animate-fade-in grid grid-cols-1 md:grid-cols-2">
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 z-20 text-neutral-400 hover:text-white p-1 rounded hover:bg-[#1E1E1E]"
+        >
+          <X size={20} />
+        </button>
+
+        {/* Product Image placeholder */}
+        <div className="bg-[#171717] p-6 flex items-center justify-center border-b md:border-b-0 md:border-r border-[#262626]">
+          <div className="w-full max-w-sm">
+            <ImagePlaceholder
+              imageUrl={product.image_url}
+              alt={product.name}
+              category={product.category}
+              aspectRatio="portrait"
+              allowEdit={true}
+              onImageChange={(url) => onUpdateProductImage?.(product.id, url)}
+            />
+          </div>
+        </div>
+
+        {/* Product Details */}
+        <div className="p-6 md:p-8 flex flex-col justify-between">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.25em] text-[#888888] font-medium mb-1">
+              {product.category} · {product.subcategory}
+            </div>
+
+            <h2 className="font-heading text-xl font-bold text-white mb-2">
+              {product.name}
+            </h2>
+
+            <div className="text-lg font-bold text-white mb-4">
+              {formattedPrice}
+            </div>
+
+            <p className="text-xs text-neutral-400 mb-6 leading-relaxed">
+              {product.description}
+            </p>
+
+            {/* Colors */}
+            <div className="mb-4">
+              <span className="block text-[11px] uppercase tracking-wider text-neutral-400 mb-2">
+                Color: <span className="text-white font-medium">{selectedColor.name}</span>
+              </span>
+              <div className="flex gap-2">
+                {product.colors.map((c) => (
+                  <button
+                    key={c.name}
+                    onClick={() => setSelectedColor(c)}
+                    className={`w-7 h-7 rounded-full border-2 transition-all ${
+                      selectedColor.name === c.name
+                        ? 'border-white scale-110'
+                        : 'border-[#333333] hover:border-neutral-500'
+                    }`}
+                    style={{ backgroundColor: c.hex }}
+                    title={c.name}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Sizes */}
+            <div className="mb-6">
+              <span className="block text-[11px] uppercase tracking-wider text-neutral-400 mb-2">
+                Size: <span className="text-white font-medium">{selectedSize}</span>
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {product.sizes.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSelectedSize(s)}
+                    className={`text-xs px-3 py-1.5 border transition-all ${
+                      selectedSize === s
+                        ? 'border-white bg-white text-black font-semibold'
+                        : 'border-[#2E2E2E] text-neutral-300 hover:border-neutral-400'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-4 border-t border-[#222222]">
+            <button
+              onClick={handleAdd}
+              disabled={product.stock <= 0}
+              className={`w-full py-3 px-4 text-xs uppercase tracking-[0.2em] font-semibold flex items-center justify-center gap-2 transition-colors ${
+                added
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-white hover:bg-neutral-200 text-black'
+              }`}
+            >
+              {added ? (
+                <>
+                  <Check size={16} />
+                  <span>Added to Shopping Bag</span>
+                </>
+              ) : (
+                <>
+                  <ShoppingBag size={16} />
+                  <span>Add to Bag</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onViewDetails(product);
+              }}
+              className="w-full py-2.5 px-4 text-xs uppercase tracking-wider text-neutral-400 hover:text-white border border-[#2E2E2E] hover:border-neutral-500 flex items-center justify-center gap-1.5 transition-colors"
+            >
+              <span>View Full Garment Details</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

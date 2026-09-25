@@ -1,0 +1,6 @@
+{
+  "name": "LENO'S — Style With No Limits",
+  "description": "High-fashion e-commerce platform and store management dashboard for LENO'S Rwanda, featuring unisex apparel, bespoke custom orders, Flutterwave payments, and real-time order tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
