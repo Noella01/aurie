@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Heart, Search, ShieldCheck, UserCheck, Menu, X, ArrowRight, Truck } from 'lucide-react';
+import { ShoppingBag, Heart, Search, Menu, X, ArrowRight } from 'lucide-react';
 import { CategoryType } from '../types';
 
 interface NavbarProps {
@@ -15,8 +15,6 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
-  currentRole,
-  onSwitchRole,
   activeView,
   onNavigate,
   cartCount,
@@ -29,45 +27,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      {/* Top luxury announcement bar */}
-      <div className="bg-[#050505] text-[#A0A0A0] text-[11px] py-2 px-4 border-b border-[#1F1F1F] flex justify-between items-center tracking-wider">
-        <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>RWANDA ATELIER · COMPLIMENTARY KIGALI DISPATCH OVER 100,000 RWF</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => onNavigate('track-order')}
-            className="hover:text-white transition-colors flex items-center gap-1 text-[11px]"
-          >
-            <Truck size={12} />
-            <span>Track Order</span>
-          </button>
-          <span className="text-[#333333]">|</span>
-          {/* Quick Role Switcher Pill */}
-          <button
-            onClick={() => onSwitchRole(currentRole === 'customer' ? 'admin' : 'customer')}
-            className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider transition-all ${
-              currentRole === 'admin'
-                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25'
-                : 'bg-[#1C1C1C] text-neutral-300 border border-[#2A2A2A] hover:text-white hover:border-neutral-500'
-            }`}
-          >
-            {currentRole === 'admin' ? (
-              <>
-                <ShieldCheck size={12} className="text-amber-400" />
-                <span>Admin Portal (/admin)</span>
-              </>
-            ) : (
-              <>
-                <UserCheck size={12} />
-                <span>Admin Portal (/admin)</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* Main Navigation Header */}
       <header className="sticky top-0 z-40 bg-[#0A0A0A]/95 backdrop-blur-md border-b border-[#2A2A2A]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
@@ -296,21 +255,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>Live Order Tracking</span>
                 <ArrowRight size={14} className="text-neutral-600" />
               </button>
-
-              <div className="pt-4 border-t border-[#222222]">
-                <button
-                  onClick={() => {
-                    onSwitchRole(currentRole === 'customer' ? 'admin' : 'customer');
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full py-2.5 px-4 rounded bg-[#1C1C1C] border border-[#2A2A2A] text-xs font-semibold text-neutral-200 flex items-center justify-center gap-2 hover:bg-[#252525]"
-                >
-                  <ShieldCheck size={16} />
-                  <span>
-                    Switch to {currentRole === 'customer' ? 'Admin Dashboard' : 'Customer Storefront'}
-                  </span>
-                </button>
-              </div>
             </div>
           </div>
         )}
