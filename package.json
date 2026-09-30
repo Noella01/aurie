@@ -4,11 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
-    "build": "vite build",
-    "start": "tsx server.ts",
-    "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "test:accounts": "node --import tsx --test tests/customerAccounts.test.ts",
+    "test:connection": "node --import tsx --test tests/frontendBackend.test.ts",
+    "dev": "tsx backend/server.ts",
+    "dev:frontend": "vite --config frontend/vite.config.ts",
+    "dev:backend": "tsx backend/server.ts --api-only",
+    "build": "vite build --config frontend/vite.config.ts",
+    "start": "tsx backend/server.ts",
+    "preview": "vite preview --config frontend/vite.config.ts",
+    "account:demo": "tsx backend/scripts/createDemoCustomer.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

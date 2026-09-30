@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Apply the saved theme before the first paint.
+      try {
+        var savedTheme = localStorage.getItem('lenos-theme');
+        document.documentElement.dataset.theme = location.pathname.startsWith('/admin') ? 'dark' :
+          (savedTheme === 'light' || savedTheme === 'dark' ? savedTheme :
+            (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
+      } catch (_) {
+        document.documentElement.dataset.theme = location.pathname.startsWith('/admin') ? 'dark' :
+          (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LENO’S — Style With No Limits</title>
+    <meta name="description" content="LENO’S is a contemporary unisex fashion brand combining modern clothing, custom-made pieces, and Rwandan traditional wear." />
+    <meta property="og:title" content="LENO’S — Style With No Limits" />
+    <meta property="og:description" content="Contemporary fashion label combining modern clothing, bespoke pieces, and Rwandan heritage wear." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@800;900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="antialiased min-h-screen">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

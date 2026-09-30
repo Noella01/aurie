@@ -1,0 +1,9 @@
+{
+  "name": "lenos-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm --prefix .. run dev:backend",
+    "start": "npm --prefix .. run start"
+  }
+}
