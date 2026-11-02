@@ -6,6 +6,7 @@
   "scripts": {
     "test:accounts": "node --import tsx --test tests/customerAccounts.test.ts",
     "test:connection": "node --import tsx --test tests/frontendBackend.test.ts",
+    "test:admin": "node --import tsx --test tests/adminProductAccess.test.ts",
     "dev": "tsx backend/server.ts",
     "dev:frontend": "vite --config frontend/vite.config.ts",
     "dev:backend": "tsx backend/server.ts --api-only",

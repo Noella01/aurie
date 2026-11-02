@@ -1,4 +1,4 @@
-# LENO’S
+# AURIE
 
 ## Project structure
 

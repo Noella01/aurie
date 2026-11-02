@@ -1,16 +1,5 @@
 @import "tailwindcss";
 
-:root { --hero-gutter: clamp(16px, 4.5vw, 86px); }
-
-.customer-header { top: 0; width: 100%; z-index: 40; }
-.customer-header-overlay { position: absolute; background: transparent; }
-.customer-header-solid { position: sticky; background: var(--tone-0a0a0a); border-bottom: 1px solid var(--tone-2a2a2a); }
-.customer-header-inner { display: flex; align-items: center; gap: 12px; min-height: 96px; padding: 16px var(--hero-gutter); }
-.customer-brand { flex-shrink: 0; margin-right: auto; }
-.customer-nav { gap: clamp(10px, 1vw, 18px); padding: 12px 16px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: .025em; white-space: nowrap; }
-.customer-auth-links { align-items: center; gap: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.customer-auth-links button { cursor: pointer; padding: 10px 5px; }
-.customer-auth-links .customer-signup { background: var(--tone-f5f5f5); color: var(--tone-0a0a0a); border-radius: 999px; padding: 11px 16px; }
 .account-page { max-width: 1120px; margin: 0 auto; padding: 64px 24px 96px; }
 .account-auth { display: grid; grid-template-columns: 1fr 1fr; gap: 70px; align-items: start; }
 .account-page h1 { font-size: clamp(28px, 4vw, 46px); margin: 12px 0 20px; }
@@ -44,88 +33,9 @@
   .account-summary { gap: 8px; }
   .account-summary button { padding: 12px; }
 }
-.customer-actions { flex-shrink: 0; border-radius: 999px; padding: 7px; }
-.customer-header-overlay .customer-nav, .customer-header-overlay .customer-actions { background: rgb(255 255 255 / .08); backdrop-filter: blur(12px); }
-:root[data-theme="light"] .customer-header-overlay .customer-nav,
-:root[data-theme="light"] .customer-header-overlay .customer-actions { background: rgb(255 255 255 / .24); }
-@media (max-width: 767px) {
-  .customer-header-inner { min-height: 80px; padding: 12px var(--hero-gutter); gap: 2px; }
-  .customer-brand > span:first-child { font-size: 21px; }
-  .customer-brand > span:last-child { font-size: 7px; letter-spacing: .12em; }
-  .customer-actions { padding: 3px; }
-}
-
-/* Campaign hero: the supplied photograph fills the entire background. */
-.fashion-hero {
-  position: relative;
-  isolation: isolate;
-  min-height: 760px;
-  height: 100svh;
-  max-height: 1100px;
-  overflow: hidden;
-  background: linear-gradient(155deg, #26383b, #171a19 65%, #333027);
-  background-size: cover;
-  background-position: center;
-  color: #f7f7ef;
-}
-:root[data-theme="light"] .fashion-hero {
-  background-color: #d9e5e4;
-  background-image: linear-gradient(155deg, #c5dfe3, #e4e7e0 60%, #ddd3c5);
-  color: #101312;
-}
-.fashion-hero-grid {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image: linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px);
-  background-size: 80px 80px;
-  opacity: .055;
-  pointer-events: none;
-}
-.fashion-hero-heading { position: relative; z-index: 2; padding: 132px var(--hero-gutter) 54px; width: 62%; }
-.fashion-eyebrow, .fashion-index { font-size: 11px; line-height: 1.5; font-weight: 600; letter-spacing: .1em; }
-.fashion-hero h1 {
-  font-family: 'Barlow Condensed', Impact, sans-serif;
-  font-size: clamp(90px, 10.7vw, 185px);
-  line-height: .9;
-  font-weight: 800;
-  letter-spacing: -.025em;
-  margin: 27px 0;
-}
-.fashion-hero h1 span { color: #a4ba74; }
-.fashion-intro { font-size: 14px; line-height: 1.65; font-weight: 500; letter-spacing: .005em; }
-.fashion-hero-aside { position: absolute; right: var(--hero-gutter); top: 160px; z-index: 2; width: 185px; }
-.fashion-hero-aside > p { margin-top: 26px; font-size: 12px; font-weight: 600; line-height: 1.55; letter-spacing: .025em; }
-.fashion-explore { display: flex; align-items: center; gap: 12px; margin-top: 110px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.fashion-explore-icon { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: #151815; color: #d9ee9a; transition: transform .2s; }
-.fashion-explore:hover .fashion-explore-icon { transform: rotate(45deg); }
-.fashion-wordmark { position: absolute; bottom: 90px; left: 1%; width: 98%; font: 900 clamp(72px, 12vw, 210px)/.8 'Barlow Condensed', Impact, sans-serif; letter-spacing: -.045em; text-align: center; opacity: .13; pointer-events: none; white-space: nowrap; }
-.fashion-hero-bottom { position: absolute; bottom: 25px; left: var(--hero-gutter); right: var(--hero-gutter); z-index: 3; display: flex; justify-content: space-between; align-items: center; gap: 20px; }
-.fashion-shopping { display: flex; gap: 8px; flex-wrap: wrap; }
-.fashion-shopping button { display: flex; align-items: center; gap: 15px; border: 1px solid currentColor; padding: 12px 18px; border-radius: 30px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; background: rgb(128 128 128 / .08); backdrop-filter: blur(12px); }
-.fashion-shopping button:hover { background: #151815; color: #f7f7ef; border-color: #151815; }
-.fashion-scroll { display: flex; align-items: center; gap: 12px; font-size: 9px; letter-spacing: .1em; }
-.fashion-hero button:focus-visible { outline: 2px solid currentColor; outline-offset: 5px; }
-.fashion-hero-with-photo, :root[data-theme="light"] .fashion-hero-with-photo { color: white; }
-.fashion-hero-with-photo::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgb(0 0 0 / .55), transparent 65%, rgb(0 0 0 / .35)), linear-gradient(0deg, rgb(0 0 0 / .45), transparent 35%); }
-@media (max-width: 767px) {
-  .fashion-hero { min-height: 800px; height: 100svh; max-height: 1000px; background-position: 60% center; }
-  .fashion-hero-heading { padding: 112px var(--hero-gutter) 36px; width: 100%; }
-  .fashion-hero h1 { font-size: clamp(82px, 18vw, 135px); margin: 24px 0; }
-  .fashion-eyebrow { font-size: 9px; letter-spacing: .07em; }
-  .fashion-hero-aside { top: auto; bottom: 140px; left: var(--hero-gutter); right: auto; width: auto; }
-  .fashion-hero-aside > p, .fashion-index { display: none; }
-  .fashion-explore { margin-top: 0; }
-  .fashion-wordmark { bottom: 85px; font-size: 14vw; }
-  .fashion-hero-bottom { left: var(--hero-gutter); right: var(--hero-gutter); bottom: 24px; }
-  .fashion-shopping { gap: 6px; }
-  .fashion-shopping button { padding: 11px 12px; gap: 6px; font-size: 10px; letter-spacing: .025em; }
-  .fashion-scroll { display: none; }
-}
-
 @layer base {
   :root {
-    --font-heading: 'Cinzel', serif;
+    --font-heading: 'Plus Jakarta Sans', Arial, sans-serif;
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   }
 
@@ -203,7 +113,7 @@
   --tone-141414: #141414;
   --tone-2f2f2f: #2F2F2F;
   --tone-101010: #101010;
-  --tone-171512: #171512;
+  --tone-171512: #171717;
   --tone-303030: #303030;
 }
 :root[data-theme="light"] {
@@ -220,7 +130,7 @@
   --color-red-400: #b91c1c;
   --color-red-900: #fee2e2;
   --color-red-950: #fee2e2;
-  --tone-0a0a0a: #f5f5f5;
+  --tone-0a0a0a: #ffffff;
   --tone-f5f5f5: #141414;
   --tone-161616: #e9e9e9;
   --tone-ffffff: #141414;
@@ -263,6 +173,6 @@
   --tone-141414: #ebebeb;
   --tone-2f2f2f: #d0d0d0;
   --tone-101010: #efefef;
-  --tone-171512: #e8eaed;
+  --tone-171512: #e8e8e8;
   --tone-303030: #cfcfcf;
 }

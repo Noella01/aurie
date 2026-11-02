@@ -11,7 +11,6 @@ import {
 } from './types';
 import {
   getProducts,
-  updateProduct,
   subscribeToStoreEvents,
   INITIAL_PRODUCTS,
 } from './services/api';
@@ -30,7 +29,6 @@ import { HomeView } from './views/HomeView';
 import { ShopView } from './views/ShopView';
 import { ProductDetailView } from './views/ProductDetailView';
 import { CustomClothingView } from './views/CustomClothingView';
-import { OrderTrackingView } from './views/OrderTrackingView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 
 type AdminTab = 'overview' | 'products' | 'orders' | 'custom' | 'inventory' | 'payments' | 'settings';
@@ -58,7 +56,6 @@ export default function App() {
         adminTab,
         customerView: 'home',
         category: 'All' as CategoryType,
-        orderNum: '',
       };
     }
 
@@ -69,21 +66,17 @@ export default function App() {
       customerView = 'shop';
     } else if (pathname.startsWith('/custom')) {
       customerView = 'custom';
-    } else if (pathname.startsWith('/track-order') || pathname.startsWith('/track')) {
-      customerView = 'track-order';
     }
 
     const catParam = searchParams.get('category');
     const validCats: CategoryType[] = ['All', 'Men', 'Women', 'Unisex', 'Culture'];
     const category = catParam && validCats.includes(catParam as any) ? (catParam as CategoryType) : 'All';
-    const orderNum = searchParams.get('order') || '';
 
     return {
       role: 'customer' as const,
       adminTab: 'overview' as AdminTab,
       customerView,
       category,
-      orderNum,
     };
   }, []);
 
@@ -94,7 +87,6 @@ export default function App() {
   const [activeView, setActiveView] = useState<string>(() => parseRoute().customerView);
   const [adminTab, setAdminTab] = useState<AdminTab>(() => parseRoute().adminTab);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>(() => parseRoute().category);
-  const [trackingOrderNumber, setTrackingOrderNumber] = useState<string>(() => parseRoute().orderNum);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   // Cart & Wishlist state
@@ -144,14 +136,11 @@ export default function App() {
     setAdminTab(route.adminTab);
     setActiveView(route.customerView);
     setSelectedCategory(route.category);
-    if (route.orderNum) {
-      setTrackingOrderNumber(route.orderNum);
-    }
   }, [parseRoute]);
 
   // URL Navigation helper
   const navigateTo = (url: string) => {
-    if (window.location.pathname + window.location.search !== url) {
+    if (window.location.pathname + window.location.search + window.location.hash !== url) {
       window.history.pushState({}, '', url);
     }
     applyRoute();
@@ -283,8 +272,6 @@ export default function App() {
       }
     } else if (view === 'custom') {
       navigateTo('/custom');
-    } else if (view === 'track-order') {
-      navigateTo('/track-order');
     } else {
       setActiveView(view);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -295,21 +282,6 @@ export default function App() {
     setSelectedProduct(product);
     setActiveView('product-detail');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleTrackSpecificOrder = (orderNum: string) => {
-    setTrackingOrderNumber(orderNum);
-    navigateTo(`/track-order?order=${encodeURIComponent(orderNum)}`);
-  };
-
-  const handleUpdateProductImage = async (productId: string, imageUrl: string) => {
-    await updateProduct(productId, { image_url: imageUrl });
-    setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, image_url: imageUrl } : p))
-    );
-    if (selectedProduct && selectedProduct.id === productId) {
-      setSelectedProduct({ ...selectedProduct, image_url: imageUrl });
-    }
   };
 
   const cartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
@@ -328,7 +300,6 @@ export default function App() {
           onSwitchToCustomer={() => {
             navigateTo('/');
           }}
-          onTrackOrder={handleTrackSpecificOrder}
         />
       </div>
     );
@@ -410,12 +381,12 @@ export default function App() {
             onSelectProduct={handleSelectProduct}
             onAddToCart={(p, size, col) => handleAddToCart(p, size, col, 1)}
             onNavigate={handleNavigate}
-            onUpdateProductImage={handleUpdateProductImage}
           />
         )}
 
         {activeView === 'shop' && (
           <ShopView
+            key={selectedCategory}
             products={products}
             initialCategory={selectedCategory}
             wishlistIds={wishlistIds}
@@ -423,7 +394,6 @@ export default function App() {
             onQuickView={(p) => setQuickViewProduct(p)}
             onSelectProduct={handleSelectProduct}
             onAddToCart={(p, size, col) => handleAddToCart(p, size, col, 1)}
-            onUpdateProductImage={handleUpdateProductImage}
           />
         )}
 
@@ -439,7 +409,6 @@ export default function App() {
             relatedProducts={products.filter(
               (p) => p.category === selectedProduct.category && p.id !== selectedProduct.id
             )}
-            onUpdateProductImage={handleUpdateProductImage}
           />
         )}
 
@@ -447,12 +416,6 @@ export default function App() {
           <CustomClothingView onNavigateHome={() => navigateTo('/')} />
         )}
 
-        {activeView === 'track-order' && (
-          <OrderTrackingView
-            initialOrderNumber={trackingOrderNumber}
-            onNavigateShop={() => navigateTo('/shop')}
-          />
-        )}
       </main>
 
       {/* Footer */}
@@ -492,12 +455,10 @@ export default function App() {
         onOrderSuccess={(order) => {
           if (customer) setAccountOrders(prev => [order, ...prev]);
           setCartItems([]);
-          setTrackingOrderNumber(order.order_number);
         }}
-        onTrackOrder={(orderNumber) => {
+        onViewOrders={() => {
           setIsCheckoutOpen(false);
-          if (customer) { navigateTo('/account'); return; }
-          handleTrackSpecificOrder(orderNumber);
+          navigateTo('/account');
         }}
       />
 
@@ -507,13 +468,13 @@ export default function App() {
         onClose={() => setQuickViewProduct(null)}
         onAddToCart={(p, sz, col) => handleAddToCart(p, sz, col, 1)}
         onViewDetails={handleSelectProduct}
-        onUpdateProductImage={handleUpdateProductImage}
       />
 
       {/* Search Modal */}
       <SearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
+        onNavigateHome={() => navigateTo('/')}
         products={products}
         onSelectProduct={handleSelectProduct}
       />

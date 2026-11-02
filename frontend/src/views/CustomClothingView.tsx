@@ -117,14 +117,14 @@ export const CustomClothingView: React.FC<CustomClothingViewProps> = () => {
       {/* Header */}
       <div className="text-center max-w-2xl mx-auto space-y-3">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--tone-2b2b2b)] bg-[var(--tone-141414)] text-[10px] uppercase tracking-[0.25em] text-[var(--tone-d4d4d4)]">
-          <Scissors size={12} className="text-amber-400" />
+          <Scissors size={12} className="text-[var(--tone-f5f5f5)]" />
           <span>KIGALI ATELIER · BESPOKE COMMISSION</span>
         </div>
         <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[var(--tone-ffffff)] uppercase tracking-wide">
           CUSTOM CLOTHING & TAILORING
         </h1>
         <p className="text-xs text-[var(--tone-a3a3a3)] leading-relaxed font-light">
-          Commission a one-of-a-kind garment crafted by LENO’S Rwandan master tailors. From modern ceremony suits to reinterpreted cultural drapery.
+          Commission a one-of-a-kind garment crafted by AURIE Rwandan master tailors. From modern ceremony suits to reinterpreted cultural drapery.
         </p>
       </div>
 
@@ -189,7 +189,7 @@ export const CustomClothingView: React.FC<CustomClothingViewProps> = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--tone-737373)]">Status:</span>
-                  <span className="text-amber-400 font-bold">{submittedRequest.status}</span>
+                  <span className="text-[var(--tone-f5f5f5)] font-bold">{submittedRequest.status}</span>
                 </div>
               </div>
 
@@ -452,7 +452,7 @@ export const CustomClothingView: React.FC<CustomClothingViewProps> = () => {
                   <span className="text-[10px] uppercase tracking-widest text-[var(--tone-737373)] block">
                     Current Stage
                   </span>
-                  <span className="inline-block px-3 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold text-xs uppercase tracking-wider mt-1">
+                  <span className="inline-block px-3 py-1 bg-[var(--tone-181818)]/20 text-[var(--tone-f5f5f5)] border border-[var(--tone-404040)]/40 font-bold text-xs uppercase tracking-wider mt-1">
                     {trackedRequest.status}
                   </span>
                 </div>
@@ -473,13 +473,13 @@ export const CustomClothingView: React.FC<CustomClothingViewProps> = () => {
                       <div key={step} className="flex-1 min-w-[70px] text-center">
                         <div
                           className={`h-1.5 w-full mb-2 transition-colors ${
-                            isPassed ? 'bg-amber-400' : 'bg-[var(--tone-262626)]'
+                            isPassed ? 'bg-[var(--tone-f5f5f5)]' : 'bg-[var(--tone-262626)]'
                           }`}
                         />
                         <span
                           className={`text-[9px] uppercase tracking-wider block font-semibold ${
                             isCurrent
-                              ? 'text-amber-300'
+                              ? 'text-[var(--tone-f5f5f5)]'
                               : isPassed
                               ? 'text-[var(--tone-ffffff)]'
                               : 'text-[var(--tone-525252)]'
@@ -513,7 +513,7 @@ export const CustomClothingView: React.FC<CustomClothingViewProps> = () => {
                 </div>
                 {trackedRequest.notes && (
                   <div className="sm:col-span-2 pt-2 border-t border-[var(--tone-1c1c1c)]">
-                    <span className="text-amber-400 font-semibold block mb-0.5">Master Tailor Note:</span>
+                    <span className="text-[var(--tone-f5f5f5)] font-semibold block mb-0.5">Master Tailor Note:</span>
                     <span className="text-[var(--tone-d4d4d4)] italic">{trackedRequest.notes}</span>
                   </div>
                 )}

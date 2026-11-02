@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { customerAccounts } from './customerAccounts';
+import { adminAuth, requireAdmin } from './adminAuth';
 import { createServer as createViteServer } from 'vite';
 import type { Product, Order, CustomClothingRequest } from '../shared/types';
 
@@ -37,7 +38,7 @@ function broadcastEvent(type: string, data: any) {
   });
 }
 
-// In-Memory Database initialized with curated LENO'S pieces (No pictures by default, placeholders ready for user)
+// In-Memory Database initialized with curated AURIE pieces (No pictures by default, placeholders ready for user)
 let products: Product[] = [
   {
     id: 'prod-001',
@@ -135,7 +136,7 @@ let products: Product[] = [
     subcategory: 'T-Shirts',
     price: 42000,
     image_url: '',
-    description: 'The defining everyday statement of LENO’S. Built with heavyweight French Terry cotton, drop shoulder boxy fit, thick ribbed collar, and high-density tonal rubberized logo print on the chest.',
+    description: 'The defining everyday statement of AURIE. Built with heavyweight French Terry cotton, drop shoulder boxy fit, thick ribbed collar, and high-density tonal rubberized logo print on the chest.',
     materials: '100% Combed Heavy Cotton (320 GSM)',
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     colors: [
@@ -276,7 +277,7 @@ let orders: Order[] = [
         status: 'PROCESSING' as const,
         timestamp: new Date(Date.now() - 20 * 3600 * 1000).toISOString(),
         title: 'Atelier Packaging',
-        description: 'Garments steamed, quality-checked, and packaged in LENO’S luxury dust bag.'
+        description: 'Garments steamed, quality-checked, and packaged in AURIE luxury dust bag.'
       },
       {
         status: 'SHIPPED' as const,
@@ -388,11 +389,11 @@ let flutterwaveConfig = {
   public_key: process.env.FLUTTERWAVE_PUBLIC_KEY || 'FLWPUBK_TEST-SANDBOX-LENOS-RW-X',
   secret_key: process.env.FLUTTERWAVE_SECRET_KEY || 'FLWSECK_TEST-SANDBOX-LENOS-RW-X',
   is_test_mode: true,
-  merchant_name: 'LENO’S Rwanda',
+  merchant_name: 'AURIE Rwanda',
   currency: 'RWF'
 };
 
-// SSE Endpoint for Live Tracking & Live Order sync
+// SSE Endpoint for order and product updates
 app.get('/api/events', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -411,6 +412,7 @@ app.get('/api/events', (req: Request, res: Response) => {
 });
 
 // Products API
+app.use('/api/admin', adminAuth);
 app.get('/api/products', (req: Request, res: Response) => {
   const { category, search } = req.query;
   let filtered = [...products];
@@ -435,7 +437,7 @@ app.get('/api/products', (req: Request, res: Response) => {
   res.json(filtered);
 });
 
-app.post('/api/products', (req: Request, res: Response) => {
+app.post('/api/products', requireAdmin, (req: Request, res: Response) => {
   const newProduct = {
     ...req.body,
     id: `prod-${Date.now().toString().slice(-6)}`,
@@ -446,7 +448,7 @@ app.post('/api/products', (req: Request, res: Response) => {
   res.status(201).json(newProduct);
 });
 
-app.put('/api/products/:id', (req: Request, res: Response) => {
+app.put('/api/products/:id', requireAdmin, (req: Request, res: Response) => {
   const index = products.findIndex((p) => p.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ error: 'Product not found' });
@@ -456,7 +458,7 @@ app.put('/api/products/:id', (req: Request, res: Response) => {
   res.json(products[index]);
 });
 
-app.delete('/api/products/:id', (req: Request, res: Response) => {
+app.delete('/api/products/:id', requireAdmin, (req: Request, res: Response) => {
   const index = products.findIndex((p) => p.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ error: 'Product not found' });
@@ -471,17 +473,6 @@ app.use('/api/account', customerAccounts(() => products));
 
 app.get('/api/orders', (req: Request, res: Response) => {
   res.json(orders);
-});
-
-app.get('/api/orders/track/:orderNumber', (req: Request, res: Response) => {
-  const cleanOrderNum = req.params.orderNumber.trim().toUpperCase().replace('#', '');
-  const order = orders.find(
-    (o) => o.order_number.toUpperCase().replace('#', '') === cleanOrderNum
-  );
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found with this number' });
-  }
-  res.json(order);
 });
 
 app.get('/api/orders/:id', (req: Request, res: Response) => {
@@ -532,7 +523,7 @@ app.patch('/api/orders/:id/status', (req: Request, res: Response) => {
     order.status = status;
     let description = note || `Order updated to ${status}`;
     if (status === 'CONFIRMED') description = 'Order confirmed and ready for crafting.';
-    if (status === 'PROCESSING') description = 'Garments in preparation at LENO’S workshop.';
+    if (status === 'PROCESSING') description = 'Garments in preparation at AURIE workshop.';
     if (status === 'SHIPPED') description = 'Package in transit with Rwandan delivery team.';
     if (status === 'DELIVERED') description = 'Package successfully handed over to customer.';
     if (status === 'CANCELLED') description = 'Order was cancelled.';
@@ -714,7 +705,7 @@ async function startServer() {
   }
 
   app.listen(PORT, () => {
-    console.log(`LENO'S full-stack server running on http://localhost:${PORT}`);
+    console.log(`AURIE full-stack server running on http://localhost:${PORT}`);
   });
 }
 

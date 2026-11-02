@@ -98,7 +98,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     subcategory: 'T-Shirts',
     price: 42000,
     image_url: '',
-    description: 'The defining everyday statement of LENO’S. Built with heavyweight French Terry cotton, drop shoulder boxy fit, thick ribbed collar, and high-density tonal rubberized logo print on the chest.',
+    description: 'The defining everyday statement of AURIE. Built with heavyweight French Terry cotton, drop shoulder boxy fit, thick ribbed collar, and high-density tonal rubberized logo print on the chest.',
     materials: '100% Combed Heavy Cotton (320 GSM)',
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     colors: [
@@ -252,67 +252,34 @@ export async function getProducts(): Promise<Product[]> {
 }
 
 export async function createProduct(productData: Partial<Product>): Promise<Product> {
-  try {
     const res = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(productData),
     });
-    if (!res.ok) throw new Error('Failed to create product');
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to create product');
     const created = await res.json();
     triggerStoreEvent('product_created', created);
     return created;
-  } catch {
-    const newProd: Product = {
-      ...productData,
-      id: `prod-${Date.now()}`,
-      created_at: new Date().toISOString()
-    } as Product;
-    const current = await getProducts();
-    const updated = [newProd, ...current];
-    localStorage.setItem('lenos_products', JSON.stringify(updated));
-    triggerStoreEvent('product_created', newProd);
-    return newProd;
-  }
 }
 
 export async function updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
-  try {
     const res = await fetch(`/api/products/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     });
-    if (!res.ok) throw new Error('Failed to update product');
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update product');
     const updated = await res.json();
     triggerStoreEvent('product_updated', updated);
     return updated;
-  } catch {
-    const current = await getProducts();
-    const idx = current.findIndex((p) => p.id === id);
-    if (idx !== -1) {
-      current[idx] = { ...current[idx], ...updates };
-      localStorage.setItem('lenos_products', JSON.stringify(current));
-      triggerStoreEvent('product_updated', current[idx]);
-      return current[idx];
-    }
-    throw new Error('Product not found');
-  }
 }
 
 export async function deleteProduct(id: string): Promise<boolean> {
-  try {
     const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete product');
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete product');
     triggerStoreEvent('product_deleted', { id });
     return true;
-  } catch {
-    const current = await getProducts();
-    const updated = current.filter((p) => p.id !== id);
-    localStorage.setItem('lenos_products', JSON.stringify(updated));
-    triggerStoreEvent('product_deleted', { id });
-    return true;
-  }
 }
 
 // Orders API
@@ -326,18 +293,6 @@ export async function getOrders(): Promise<Order[]> {
   } catch {
     const cached = localStorage.getItem('lenos_orders');
     return cached ? JSON.parse(cached) : [];
-  }
-}
-
-export async function trackOrderByNumber(orderNumber: string): Promise<Order | null> {
-  try {
-    const res = await fetch(`/api/orders/track/${encodeURIComponent(orderNumber)}`);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    const orders = await getOrders();
-    const cleanNum = orderNumber.trim().toUpperCase().replace('#', '');
-    return orders.find((o) => o.order_number.toUpperCase().replace('#', '') === cleanNum) || null;
   }
 }
 
@@ -502,7 +457,7 @@ export async function getFlutterwaveConfig(): Promise<FlutterwaveConfig> {
       public_key: 'FLWPUBK_TEST-SANDBOX-LENOS-RW-X',
       secret_key: 'FLWSECK_TEST-SANDBOX-LENOS-RW-X',
       is_test_mode: true,
-      merchant_name: 'LENO’S Rwanda',
+      merchant_name: 'AURIE Rwanda',
       currency: 'RWF'
     };
   }

@@ -11,7 +11,7 @@ interface CheckoutModalProps {
   onClose: () => void;
   cartItems: CartItem[];
   onOrderSuccess: (order: Order) => void;
-  onTrackOrder: (orderNumber: string) => void;
+  onViewOrders: () => void;
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
@@ -21,7 +21,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   onClose,
   cartItems,
   onOrderSuccess,
-  onTrackOrder
+  onViewOrders
 }) => {
   const [step, setStep] = useState<'details' | 'payment_prompt' | 'success'>('details');
   const [fullName, setFullName] = useState(customer?.name || '');
@@ -119,12 +119,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] w-full max-w-2xl rounded-none shadow-2xl overflow-hidden relative animate-fade-in text-[var(--tone-f5f5f5)]">
+      <div className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] w-full max-w-2xl max-h-[calc(100dvh-2rem)] rounded-none shadow-2xl overflow-y-auto relative animate-fade-in text-[var(--tone-f5f5f5)]">
         {/* Header */}
         <div className="p-6 border-b border-[var(--tone-222222)] flex items-center justify-between">
           <div>
             <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--tone-888888)] font-semibold">
-              LENO’S CHECKOUT
+              AURIE CHECKOUT
             </span>
             <h2 className="font-heading text-lg font-bold text-[var(--tone-ffffff)] tracking-wide">
               {step === 'details' && 'Shipping & Payment Information'}
@@ -135,6 +135,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           {step !== 'success' && (
             <button
               onClick={onClose}
+              aria-label="Close checkout"
               className="text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] p-1 rounded hover:bg-[var(--tone-1e1e1e)]"
             >
               <X size={20} />
@@ -279,7 +280,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Smartphone size={18} className="text-amber-400" />
+                    <Smartphone size={18} className="text-[var(--tone-f5f5f5)]" />
                     <div>
                       <div className="text-xs font-semibold text-[var(--tone-ffffff)]">Rwanda Mobile Money</div>
                       <div className="text-[10px] text-[var(--tone-a3a3a3)]">MTN MoMo & Airtel Money (RWF)</div>
@@ -351,7 +352,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 Flutterwave Secure Checkout
               </h4>
               <p className="text-xs text-[var(--tone-a3a3a3)] mt-1">
-                Merchant: <span className="text-[var(--tone-ffffff)] font-medium">LENO’S Rwanda</span>
+                Merchant: <span className="text-[var(--tone-ffffff)] font-medium">AURIE Rwanda</span>
               </p>
               <div className="font-heading text-2xl font-bold text-[var(--tone-ffffff)] mt-2">
                 {formatCurrency(total)}
@@ -360,7 +361,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
             {paymentMethod === 'flutterwave_momo' ? (
               <div className="space-y-4 bg-[var(--tone-161616)] p-4 border border-[var(--tone-282828)]">
-                <div className="flex items-center gap-2 text-xs text-amber-300">
+                <div className="flex items-center gap-2 text-xs text-[var(--tone-f5f5f5)]">
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
                   <span className="font-semibold">Rwanda Mobile Money (MTN / Airtel) Prompt</span>
                 </div>
@@ -382,7 +383,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
 
                 <div className="text-[11px] text-[var(--tone-a3a3a3)] bg-[var(--tone-0a0a0a)] p-3 border border-[var(--tone-222222)]">
-                  <strong>How it works:</strong> You will receive a prompt on your phone screen: <em>"Pay {formatCurrency(total)} to LENO’S?"</em>. Enter your PIN to complete the transaction.
+                  <strong>How it works:</strong> You will receive a prompt on your phone screen: <em>"Pay {formatCurrency(total)} to AURIE?"</em>. Enter your PIN to complete the transaction.
                 </div>
               </div>
             ) : (
@@ -457,7 +458,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 {customer ? 'ORDER SAVED · AWAITING PAYMENT' : 'DEMO ORDER CONFIRMED'}
               </span>
               <h3 className="font-heading text-2xl font-bold text-[var(--tone-ffffff)] mt-1">
-                Thank you for shopping with LENO’S.
+                Thank you for shopping with AURIE.
               </h3>
               <p className="text-xs text-[var(--tone-a3a3a3)] mt-2 max-w-md mx-auto">
                 {customer ? 'Your order is in My account. No payment has been collected and dispatch has not been confirmed.' : 'This is a simulated order. No real payment has been collected.'}
@@ -484,16 +485,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto pt-2">
-              <button
+              {customer && <button
                 onClick={() => {
                   onClose();
-                  onTrackOrder(completedOrder.order_number);
+                  onViewOrders();
                 }}
                 className="bg-[var(--tone-ffffff)] hover:bg-[var(--tone-e5e5e5)] text-[var(--tone-000000)] py-3 px-6 text-xs uppercase tracking-widest font-semibold flex items-center justify-center gap-2 transition-colors"
               >
-                <span>{customer ? 'View my orders' : 'Live Order Tracking'}</span>
+                <span>View my orders</span>
                 <ArrowRight size={14} />
-              </button>
+              </button>}
 
               <button
                 onClick={onClose}

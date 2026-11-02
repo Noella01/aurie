@@ -17,7 +17,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
   category = 'Collection',
   aspectRatio = 'portrait',
   className = '',
-  allowEdit = true,
+  allowEdit = false,
   onImageChange
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -126,7 +126,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
           {alt}
         </div>
         <div className="text-[9px] uppercase tracking-widest text-[var(--tone-707070)] mt-0.5">
-          [ Photo Ready to Add ]
+          Image coming soon
         </div>
       </div>
 

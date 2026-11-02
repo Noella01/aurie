@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Check, ShoppingBag, ArrowRight } from 'lucide-react';
 import { Product, ProductColor } from '../types';
 import { ImagePlaceholder } from './ImagePlaceholder';
@@ -8,21 +8,27 @@ interface QuickViewModalProps {
   onClose: () => void;
   onAddToCart: (product: Product, size: string, color: ProductColor) => void;
   onViewDetails: (product: Product) => void;
-  onUpdateProductImage?: (productId: string, imageUrl: string) => void;
 }
 
-export const QuickViewModal: React.FC<QuickViewModalProps> = ({
+export const QuickViewModal: React.FC<QuickViewModalProps> = (props) => (
+  props.product ? <QuickViewContent key={props.product.id} {...props} product={props.product} /> : null
+);
+
+const QuickViewContent: React.FC<QuickViewModalProps & { product: Product }> = ({
   product,
   onClose,
   onAddToCart,
   onViewDetails,
-  onUpdateProductImage
 }) => {
-  if (!product) return null;
-
   const [selectedSize, setSelectedSize] = useState<string>(product.sizes[0] || 'M');
   const [selectedColor, setSelectedColor] = useState<ProductColor>(product.colors[0] || { name: 'Black', hex: '#000' });
   const [added, setAdded] = useState(false);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   const formattedPrice = new Intl.NumberFormat('en-RW', {
     style: 'currency',
@@ -38,9 +44,11 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] w-full max-w-3xl rounded-none shadow-2xl overflow-hidden relative animate-fade-in grid grid-cols-1 md:grid-cols-2">
+      <div role="dialog" aria-modal="true" aria-label={`Quick view: ${product.name}`} className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] w-full max-w-3xl max-h-[calc(100dvh-2rem)] rounded-none shadow-2xl overflow-y-auto relative animate-fade-in grid grid-cols-1 md:grid-cols-2">
         <button
           onClick={onClose}
+          aria-label="Close quick view"
+          autoFocus
           className="absolute top-4 right-4 z-20 text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] p-1 rounded hover:bg-[var(--tone-1e1e1e)]"
         >
           <X size={20} />
@@ -54,8 +62,7 @@ export const QuickViewModal: React.FC<QuickViewModalProps> = ({
               alt={product.name}
               category={product.category}
               aspectRatio="portrait"
-              allowEdit={true}
-              onImageChange={(url) => onUpdateProductImage?.(product.id, url)}
+              allowEdit={false}
             />
           </div>
         </div>

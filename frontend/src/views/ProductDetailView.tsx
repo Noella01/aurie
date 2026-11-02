@@ -12,7 +12,6 @@ interface ProductDetailViewProps {
   onBuyNow: (p: Product, size: string, color: ProductColor, quantity: number) => void;
   onSelectRelated: (p: Product) => void;
   relatedProducts: Product[];
-  onUpdateProductImage?: (productId: string, imageUrl: string) => void;
 }
 
 export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
@@ -24,7 +23,6 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
   onBuyNow,
   onSelectRelated,
   relatedProducts,
-  onUpdateProductImage
 }) => {
   const [selectedSize, setSelectedSize] = useState<string>(product.sizes[0] || 'M');
   const [selectedColor, setSelectedColor] = useState<ProductColor>(
@@ -71,13 +69,9 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
               alt={product.name}
               category={product.category}
               aspectRatio="portrait"
-              allowEdit={true}
-              onImageChange={(url) => onUpdateProductImage?.(product.id, url)}
+              allowEdit={false}
               className="w-full max-w-lg mx-auto"
             />
-          </div>
-          <div className="text-center text-[10px] text-[var(--tone-737373)] uppercase tracking-widest">
-            Click &ldquo;Add Picture&rdquo; to add or change the garment visual
           </div>
         </div>
 
@@ -284,7 +278,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           <div className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] max-w-lg w-full p-6 space-y-4 text-xs">
             <div className="flex justify-between items-center pb-2 border-b border-[var(--tone-222222)]">
               <h3 className="font-heading text-sm font-bold text-[var(--tone-ffffff)] uppercase tracking-wider">
-                LENO’S Tailoring Size Guide
+                AURIE Tailoring Size Guide
               </h3>
               <button onClick={() => setShowSizeGuide(false)} className="text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)]">
                 ✕

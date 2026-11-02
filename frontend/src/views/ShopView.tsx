@@ -11,7 +11,6 @@ interface ShopViewProps {
   onQuickView: (p: Product) => void;
   onSelectProduct: (p: Product) => void;
   onAddToCart: (p: Product, size: string, color: ProductColor) => void;
-  onUpdateProductImage?: (productId: string, imageUrl: string) => void;
 }
 
 export const ShopView: React.FC<ShopViewProps> = ({
@@ -22,7 +21,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
   onQuickView,
   onSelectProduct,
   onAddToCart,
-  onUpdateProductImage
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>(initialCategory);
   const [selectedSize, setSelectedSize] = useState<string>('All');
@@ -53,7 +51,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
       {/* Page Header */}
       <div className="mb-10 text-center sm:text-left">
         <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--tone-888888)] font-semibold">
-          LENO’S CATALOGUE
+          AURIE CATALOGUE
         </span>
         <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[var(--tone-ffffff)] mt-1">
           {selectedCategory === 'All' ? 'ALL COLLECTIONS' : `${selectedCategory.toUpperCase()} COLLECTION`}
@@ -216,7 +214,6 @@ export const ShopView: React.FC<ShopViewProps> = ({
               onQuickView={onQuickView}
               onSelectProduct={onSelectProduct}
               onAddToCart={onAddToCart}
-              onUpdateProductImage={onUpdateProductImage}
             />
           ))}
         </div>

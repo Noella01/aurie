@@ -24,7 +24,6 @@ import {
   Lock,
   Unlock,
   LogOut,
-  ShieldCheck,
   ExternalLink
 } from 'lucide-react';
 import { Product, Order, CustomClothingRequest, OrderStatus, PaymentStatus, CustomRequestStatus, CategoryType } from '../types';
@@ -49,21 +48,18 @@ interface AdminDashboardViewProps {
   currentTab?: AdminTab;
   onTabChange?: (tab: AdminTab) => void;
   onSwitchToCustomer: () => void;
-  onTrackOrder: (orderNumber: string) => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   currentTab = 'overview',
   onTabChange,
   onSwitchToCustomer,
-  onTrackOrder
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>(currentTab);
 
   // Authentication gate for admin portal
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('lenos_admin_auth') === 'true';
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [passcode, setPasscode] = useState('');
   const [authError, setAuthError] = useState('');
 
@@ -99,20 +95,35 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleLogin = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (passcode === '2026' || passcode.toLowerCase() === 'admin' || !passcode.trim()) {
+  useEffect(() => {
+    fetch('/api/admin/session')
+      .then(res => res.ok ? res.json() : { authenticated: false })
+      .then(data => setIsAuthenticated(data.authenticated === true))
+      .catch(() => setIsAuthenticated(false))
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passcode }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
+      setPasscode('');
       setIsAuthenticated(true);
-      localStorage.setItem('lenos_admin_auth', 'true');
-      setAuthError('');
-    } else {
-      setAuthError('Incorrect passcode. Use default PIN: 2026 or click Quick Demo Access.');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Sign-in failed.');
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await fetch('/api/admin/logout', { method: 'POST' }).catch(() => undefined);
     setIsAuthenticated(false);
-    localStorage.removeItem('lenos_admin_auth');
   };
 
   const loadData = async () => {
@@ -205,8 +216,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
   const handleDeleteProduct = async (id: string) => {
     if (confirm('Are you sure you want to remove this garment from the store?')) {
-      await deleteProduct(id);
-      setProducts((prev) => prev.filter((p) => p.id !== id));
+      try {
+        await deleteProduct(id);
+        setProducts((prev) => prev.filter((p) => p.id !== id));
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Failed to remove garment.');
+      }
     }
   };
 
@@ -225,6 +240,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const inProductionCustomCount = customRequests.filter((r) => r.status !== 'COMPLETED' && r.status !== 'CANCELLED').length;
   const lowStockProducts = products.filter((p) => p.stock < 10);
 
+  if (authLoading) return <div className="min-h-screen bg-[var(--tone-070707)]" />;
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[var(--tone-070707)] flex flex-col justify-center items-center p-4 selection:bg-[var(--tone-ffffff)] selection:text-[var(--tone-000000)]">
@@ -236,13 +253,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <Lock size={22} />
             </div>
             <span className="font-heading text-xl font-bold tracking-[0.2em] text-[var(--tone-ffffff)] block">
-              LENO’S
+              AURIE
             </span>
             <span className="text-[10px] tracking-[0.3em] uppercase text-amber-400 font-semibold block">
               Store Admin Portal
             </span>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[var(--tone-1c1c1c)] border border-[var(--tone-2e2e2e)] text-[10px] font-mono text-[var(--tone-a3a3a3)] mt-1">
-              <span>localhost:3000/admin</span>
+              <span>/admin</span>
             </div>
             <p className="text-xs text-[var(--tone-a3a3a3)] pt-2 font-light">
               Restricted portal for store operations, Kigali atelier inventory, bespoke tailoring, and Flutterwave payment settings.
@@ -252,19 +269,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1.5 font-semibold">
-                Admin Passcode / PIN
+                Admin Password
               </label>
               <input
                 type="password"
                 autoFocus
                 value={passcode}
                 onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Enter PIN (Default: 2026)"
+                placeholder="Enter admin password"
                 className="w-full bg-[var(--tone-181818)] border border-[var(--tone-333333)] px-3.5 py-2.5 text-sm text-[var(--tone-ffffff)] rounded focus:outline-none focus:border-[var(--tone-ffffff)] font-mono"
               />
-              <span className="text-[10px] text-[var(--tone-737373)] mt-1 block">
-                Default PIN: <code className="text-[var(--tone-d4d4d4)]">2026</code>
-              </span>
             </div>
 
             {authError && (
@@ -286,19 +300,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div className="pt-4 border-t border-[var(--tone-222222)] flex flex-col gap-2.5">
             <button
               type="button"
-              onClick={() => handleLogin()}
-              className="w-full py-2 bg-[var(--tone-1c1c1c)] hover:bg-[var(--tone-252525)] border border-[var(--tone-2e2e2e)] text-[var(--tone-d4d4d4)] hover:text-[var(--tone-ffffff)] text-xs font-semibold rounded flex items-center justify-center gap-2 transition-colors uppercase tracking-wider"
-            >
-              <ShieldCheck size={14} className="text-amber-400" />
-              <span>Quick 1-Click Demo Sign In</span>
-            </button>
-
-            <button
-              type="button"
               onClick={onSwitchToCustomer}
               className="w-full py-2 text-[var(--tone-737373)] hover:text-[var(--tone-d4d4d4)] text-xs flex items-center justify-center gap-1.5 transition-colors"
             >
-              <span>← Back to Customer Storefront (localhost:3000)</span>
+              <span>← Back to Customer Storefront</span>
             </button>
           </div>
         </div>
@@ -315,7 +320,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div className="p-5 border-b border-[var(--tone-222222)] flex items-center justify-between">
             <div>
               <span className="font-heading text-lg font-bold tracking-[0.2em] text-[var(--tone-ffffff)]">
-                LENO’S
+                AURIE
               </span>
               <span className="block text-[9px] uppercase tracking-[0.3em] text-amber-400 font-semibold">
                 Store Management
@@ -658,13 +663,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                               title="View Order Details"
                             >
                               <Eye size={14} />
-                            </button>
-                            <button
-                              onClick={() => onTrackOrder(order.order_number)}
-                              className="text-[10px] text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] px-2 py-1 border border-[var(--tone-333333)] hover:border-[var(--tone-737373)] rounded font-mono"
-                              title="Open in customer live tracking view"
-                            >
-                              Track
                             </button>
                           </div>
                         </td>
@@ -1124,7 +1122,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={flwConfig?.merchant_name || 'LENO’S Rwanda'}
+                    value={flwConfig?.merchant_name || 'AURIE Rwanda'}
                     onChange={(e) =>
                       setFlwConfig({ ...flwConfig, merchant_name: e.target.value })
                     }
@@ -1198,7 +1196,6 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           order={viewingOrder}
           onClose={() => setViewingOrder(null)}
           onUpdateStatus={handleUpdateOrderStatus}
-          onTrackOrder={onTrackOrder}
         />
       )}
     </div>
@@ -1229,10 +1226,12 @@ function ProductEditModal({
   const [isFeatured, setIsFeatured] = useState(product?.is_featured ?? true);
   const [isNewArrival, setIsNewArrival] = useState(product?.is_new_arrival ?? true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSaveError('');
     try {
       const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
       await onSave({
@@ -1255,6 +1254,8 @@ function ProductEditModal({
         ],
         gender: category === 'Men' ? 'men' : category === 'Women' ? 'women' : 'unisex'
       });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save garment.');
     } finally {
       setSaving(false);
     }
@@ -1273,6 +1274,7 @@ function ProductEditModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {saveError && <p role="alert" className="text-red-300">{saveError}</p>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
@@ -1437,12 +1439,10 @@ function OrderDetailModal({
   order,
   onClose,
   onUpdateStatus,
-  onTrackOrder
 }: {
   order: Order;
   onClose: () => void;
   onUpdateStatus: (id: string, st: OrderStatus) => void;
-  onTrackOrder: (num: string) => void;
 }) {
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('en-RW', {
@@ -1540,22 +1540,13 @@ function OrderDetailModal({
           </div>
         </div>
 
-        {/* Footer info & tracking link */}
+        {/* Footer information */}
         <div className="flex flex-col sm:flex-row items-center justify-between pt-4 border-t border-[var(--tone-222222)] gap-3">
           <div className="text-xs">
             <span className="text-[var(--tone-a3a3a3)]">Order Total: </span>
             <span className="font-bold text-base text-[var(--tone-ffffff)] ml-1">{formatCurrency(order.total)}</span>
           </div>
 
-          <button
-            onClick={() => {
-              onClose();
-              onTrackOrder(order.order_number);
-            }}
-            className="bg-[var(--tone-ffffff)] hover:bg-[var(--tone-e5e5e5)] text-[var(--tone-000000)] px-4 py-2 text-xs font-semibold uppercase tracking-wider rounded transition-colors"
-          >
-            Open in Live Tracking
-          </button>
         </div>
       </div>
     </div>

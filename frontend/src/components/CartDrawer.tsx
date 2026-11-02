@@ -53,6 +53,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
             </div>
             <button
               onClick={onClose}
+              aria-label="Close cart"
               className="p-1.5 text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] hover:bg-[var(--tone-1c1c1c)] rounded transition-colors"
             >
               <X size={20} />
@@ -68,7 +69,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </div>
                 <p className="font-heading text-sm text-[var(--tone-d4d4d4)] mb-1">Your bag is empty</p>
                 <p className="text-xs text-[var(--tone-737373)] max-w-xs mb-6">
-                  Explore LENO’S menswear, womenswear, and contemporary cultural collections.
+                  Explore AURIE menswear, womenswear, and contemporary cultural collections.
                 </p>
                 <button
                   onClick={onClose}

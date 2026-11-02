@@ -27,7 +27,7 @@ export function AccountView(props: Props) {
   if (props.loading) return <div className="account-page" role="status">Loading your account…</div>;
   if (!customer) return (
     <section className="account-page account-auth">
-      <div><p className="account-kicker">YOUR LENO’S</p><h1>{signup ? 'Make it yours.' : 'Welcome back.'}</h1>
+      <div><p className="account-kicker">YOUR AURIE</p><h1>{signup ? 'Make it yours.' : 'Welcome back.'}</h1>
         <p>Keep your favourites close. Find your orders, saved cart, and next favourite piece in one place.</p>
         <button className="account-link" onClick={() => onNavigate('shop')}>Continue shopping without an account →</button>
       </div>
@@ -40,7 +40,7 @@ export function AccountView(props: Props) {
         {(error || props.error) && <p role="alert">{error || props.error}</p>}
         <button className="account-primary" disabled={busy}>{busy ? 'Please wait…' : signup ? 'Sign up' : 'Log in'}</button>
         <button type="button" className="account-link" onClick={() => { setError(''); onNavigate(signup ? 'login' : 'signup'); }}>
-          {signup ? 'Already a member? Log in' : 'New to LENO’S? Create an account'}
+          {signup ? 'Already a member? Log in' : 'New to AURIE? Create an account'}
         </button>
       </form>
     </section>
