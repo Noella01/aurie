@@ -1,4 +1,4 @@
-name: Check and deploy
+name: Check
 
 on:
   push:
@@ -11,11 +11,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  group: checks-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -36,15 +36,3 @@ jobs:
 
       - name: Build website
         run: npm run build
-
-      - name: Trigger Render deployment
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        env:
-          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -z "$DEPLOY_HOOK" ]; then
-            echo "Add the RENDER_DEPLOY_HOOK_URL repository secret first."
-            exit 1
-          fi
-          curl --fail --silent --show-error \
-            --request POST "${DEPLOY_HOOK}&ref=${GITHUB_SHA}"

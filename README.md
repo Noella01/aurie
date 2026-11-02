@@ -19,7 +19,7 @@ package.json               Commands and dependencies for both applications
 .data/                     Local account storage (not committed)
 ```
 
-Both applications share one dependency installation and lockfile at the root. No source code is lost when moving between development and deployment.
+Both applications share one dependency installation and lockfile at the root.
 
 ## Run locally
 
@@ -36,18 +36,15 @@ You can also run `npm run dev` inside `frontend/` to start only the frontend, or
 
 ## Local customer login
 
-With other backend processes stopped, run `npm run account:demo` once. It creates a local test customer and prints its generated credentials, also saved in ignored `.data/demo-login.json`. Then start the application and visit `/login`. This is a customer account, not an administrator account. It is not created automatically on Render. Live customers use Sign up.
+With other backend processes stopped, run `npm run account:demo` once. It creates a local test customer and prints its generated credentials, also saved in ignored `.data/demo-login.json`. Then start the application and visit `/login`. This is a customer account, not an administrator account. Live customers use Sign up.
 
 Never commit `.data`, private `.env` files, passwords or database connection strings.
 
-## Build and Render
+## Production build
 
-- Root directory: project root (leave Render's Root Directory blank).
-- Build command: `npm ci --include=dev && npm run build`.
-- Start command: `npm start`.
-- Environment: `NODE_ENV=production`, `NODE_VERSION=22`.
+Run `npm ci --include=dev && npm run build` from the project root to build the frontend. Set `NODE_ENV=production` and start the backend with `npm start` to serve the frontend and `/api` from the same origin.
 
-The frontend builds to `frontend/dist`; the backend serves it and `/api` from the same public URL. Source folders are separate even though one Render service runs the site. Existing GitHub Actions build/start commands still apply. `npm run preview` only previews built frontend assets; use the backend for full account testing.
+The frontend builds to `frontend/dist`. `npm run preview` only previews built frontend assets; use the backend for full account testing.
 
 Account endpoints currently require `ACCOUNT_DATA_DIR` on a persistent disk in production. See CUSTOMER-ACCOUNTS.md for the current storage limitations and remaining production work.
 
@@ -55,7 +52,7 @@ Account endpoints currently require `ACCOUNT_DATA_DIR` on a persistent disk in p
 
 Use PostgreSQL for the live store. It is suitable for customers, unique email addresses, products, inventory, carts, orders, order lines, payment attempts and sessions. Database transactions help keep related updates consistent.
 
-Since the application is on Render, Render Postgres is the simplest hosting match. Create it in the backend's region and use its internal connection URL **only on the backend**. Do not put database credentials into frontend variables prefixed with `VITE_`.
+Use a managed PostgreSQL database for production and keep its connection URL **only on the backend**. Do not put database credentials into frontend variables prefixed with `VITE_`.
 
 PostgreSQL is a recommendation, not an already connected dependency: the application still uses `.data/customers.json` for accounts and in-memory legacy catalogue/demo data. A PostgreSQL migration needs tables, a backend database driver, data migration, and replacing the current file/in-memory repositories. Merely setting `DATABASE_URL` will not perform that migration.
 

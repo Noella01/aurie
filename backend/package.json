@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm --prefix .. run dev:backend",
-    "start": "npm --prefix .. run start"
+    "dev": "node init && npm --prefix .. run dev:backend",
+    "start": "node init && npm --prefix .. run start"
   }
 }

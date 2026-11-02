@@ -4,11 +4,11 @@ Customers can browse and add items to their cart without signing in. The bag ico
 
 Signing in merges the guest cart and favourites into the account. Authenticated carts and favourites are saved on the server, and orders are bound to the authenticated customer ID, never a submitted email. Logging out clears the visible account's cart and favourites. The dashboard shows order history, unpaid orders, cart, favourites, and profile details. An unfinished cart is not counted as a purchase. Only account orders created while signed in appear in this history; old guest/demo orders are not claimed by email.
 
-## Storage and deployment
+## Storage
 
 Development stores account records in the ignored `.data/customers.json`. Passwords are salted and hashed with scrypt. Random session tokens are stored as hashes on the server and sent in HttpOnly, SameSite cookies; production cookies also require HTTPS. Sessions expire after seven days. Login attempts are rate limited within the running process.
 
-Production account endpoints stay disabled unless `ACCOUNT_DATA_DIR` is set. On Render, mount persistent storage and set this variable to a writable folder on that mount, such as `/var/data/lenos-accounts`. An environment variable alone does not make storage persistent. Back up this directory and restrict its access. This implementation supports one server process; use a managed database/session store before running multiple instances.
+Production account endpoints stay disabled unless `ACCOUNT_DATA_DIR` is set to a writable directory on persistent storage. An environment variable alone does not make storage persistent. Back up this directory and restrict its access. This implementation supports one server process; use a managed database/session store before running multiple instances.
 
 ## Remaining launch work
 
