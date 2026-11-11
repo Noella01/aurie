@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { accountRequest, type Account, type Customer } from '../services/account';
 import type { Order } from '../types';
+import { isBackendConfigured } from '../services/http';
 
 type Props = {
   mode: string; customer: Customer | null; orders: Order[]; loading: boolean;
   cartCount: number; wishlistCount: number; error: string;
-  onAuthenticated: (account: Account) => void; onNavigate: (view: string) => void;
+  onAuthenticated: (account: Account) => void | Promise<void>; onNavigate: (view: string) => void;
+  onResumeOrder: (order:Order) => void; onRecoverShopping: () => Promise<void>;
   onCart: () => void; onWishlist: () => void; onLogout: () => Promise<void>;
 };
 export function AccountView(props: Props) {
@@ -20,14 +22,22 @@ export function AccountView(props: Props) {
     setBusy(true); setError('');
     try {
       const account = await accountRequest<Account>(signup ? 'signup' : 'login', Object.fromEntries(form));
-      props.onAuthenticated(account);
+      await props.onAuthenticated(account);
     } catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
+  if (!isBackendConfigured) return (
+    <section className="account-page account-auth">
+      <div><p className="account-kicker">YOUR MONVÉ</p><h1>Accounts are coming soon.</h1>
+        <p>Sign-in and registration are temporarily unavailable. You can still browse the collection and keep your cart and favourites in this browser.</p>
+        <button className="account-primary" onClick={() => onNavigate('shop')}>Continue shopping</button>
+      </div>
+    </section>
+  );
   if (props.loading) return <div className="account-page" role="status">Loading your account…</div>;
   if (!customer) return (
     <section className="account-page account-auth">
-      <div><p className="account-kicker">YOUR AURIE</p><h1>{signup ? 'Make it yours.' : 'Welcome back.'}</h1>
+      <div><p className="account-kicker">YOUR MONVÉ</p><h1>{signup ? 'Make it yours.' : 'Welcome back.'}</h1>
         <p>Keep your favourites close. Find your orders, saved cart, and next favourite piece in one place.</p>
         <button className="account-link" onClick={() => onNavigate('shop')}>Continue shopping without an account →</button>
       </div>
@@ -40,7 +50,7 @@ export function AccountView(props: Props) {
         {(error || props.error) && <p role="alert">{error || props.error}</p>}
         <button className="account-primary" disabled={busy}>{busy ? 'Please wait…' : signup ? 'Sign up' : 'Log in'}</button>
         <button type="button" className="account-link" onClick={() => { setError(''); onNavigate(signup ? 'login' : 'signup'); }}>
-          {signup ? 'Already a member? Log in' : 'New to AURIE? Create an account'}
+          {signup ? 'Already a member? Log in' : 'New to MONVÉ? Create an account'}
         </button>
       </form>
     </section>
@@ -51,6 +61,7 @@ export function AccountView(props: Props) {
         <button className="account-link" disabled={busy} onClick={async () => { setBusy(true); try { await props.onLogout(); } catch(e) { setError((e as Error).message); } finally { setBusy(false); } }}>Log out</button>
       </div>
       {(error || props.error) && <p role="alert">{error || props.error}</p>}
+      {props.error && <div><p className="account-muted">Recovery restores your unsaved bag over the current saved bag when a backup exists. Otherwise it merges saved guest items.</p><button className="account-link" disabled={busy} onClick={async()=>{setBusy(true);try{await props.onRecoverShopping();setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>Recover saved shopping</button></div>}
       <div className="account-summary">
         <button onClick={() => setTab('orders')}><strong>{orders.length}</strong><span>My orders</span></button>
         <button onClick={props.onCart}><strong>{props.cartCount}</strong><span>Cart · continue checkout</span></button>
@@ -64,7 +75,7 @@ export function AccountView(props: Props) {
               {order.items.map((item, i) => <p key={i}>{item.product_name} · {item.size} · {item.color} × {item.quantity}</p>)}
               <p>Delivery: {order.delivery_street}, {order.delivery_sector}, {order.delivery_district}</p>
               {order.timeline.map((event, i) => <p key={i}>{event.title} — {event.description}</p>)}
-              {order.payment_status === 'PENDING' && <p className="account-muted">Payment collection is not available yet. This order is saved as unpaid.</p>}
+              {['PENDING','FAILED'].includes(order.payment_status) && order.status!=='CANCELLED' && <button className="account-link" onClick={()=>props.onResumeOrder(order)}>Resume payment / check status</button>}
             </details>
           ))}
         </div>}

@@ -51,7 +51,7 @@ export const ShopView: React.FC<ShopViewProps> = ({
       {/* Page Header */}
       <div className="mb-10 text-center sm:text-left">
         <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--tone-888888)] font-semibold">
-          AURIE CATALOGUE
+          MONVÉ CATALOGUE
         </span>
         <h1 className="font-heading text-3xl sm:text-4xl font-bold text-[var(--tone-ffffff)] mt-1">
           {selectedCategory === 'All' ? 'ALL COLLECTIONS' : `${selectedCategory.toUpperCase()} COLLECTION`}

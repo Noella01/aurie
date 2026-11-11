@@ -1,61 +1,79 @@
-# AURIE
+# MONVÉ storefront
 
-## Project structure
+The site is a React/Vite storefront with a small Node product service for local catalogue management. The service persists products and product images on disk, authenticates the admin product area, and sends catalogue updates to the customer portal. It does not implement orders, customer accounts, Customs requests, checkout or payments; those still need a full replacement service.
 
-```text
-frontend/                  React pages, navigation, cart, customer dashboard
-  src/
-  public/                  Images and public assets
-  index.html
-  vite.config.ts
-backend/
-  server.ts                Express APIs and production web server
-  customerAccounts.ts      Login, sessions, saved shopping lists and account orders
-  scripts/                 Local development utilities
-shared/types.ts            Types shared by frontend and backend
-tests/                     API integration tests
-package.json               Commands and dependencies for both applications
-.env                       Private backend environment settings (not committed)
-.data/                     Local account storage (not committed)
-```
+## Website and backend documentation
 
-Both applications share one dependency installation and lockfile at the root.
+The 4 November 2026 source snapshot is documented in [Website current state](docs/website-current-state.md). Use [Backend requirements](docs/backend-requirements.md) for the complete feature mapping, API contracts, data model, integration changes and acceptance checklist. The [AI backend build prompt](docs/backend-ai-prompt.md) is ready to copy into a development AI with access to this repository.
 
 ## Run locally
 
-Run `npm ci` once from the project root. Use `npm run dev` for the combined development server at http://localhost:3000.
+From the project root:
 
-To run the frontend and backend independently, use two terminals at the root:
+```sh
+npm ci
+npm run dev
+```
 
-1. `npm run dev:backend` — API at http://localhost:3000.
-2. `npm run dev:frontend` — website at http://localhost:5173.
+`npm run dev` starts the product API on port 3001 and the storefront on port 5173. Copy `.env.example` to `.env` if needed, then set a private `ADMIN_PASSWORD` before signing in at `/admin`. The development API creates an unpredictable session secret at startup when `SESSION_SECRET` is not set.
 
-Open the **frontend URL** in your browser. Its Vite proxy sends `/api/*` requests to the backend, including secure session cookies. This avoids cross-origin cookie configuration. If changing the backend port, set `API_PROXY_TARGET` for the frontend process accordingly.
+Products are stored in `.data/monve/products.json`; uploaded product images are stored in `.data/monve/uploads/`. Both paths are ignored by Git. The first start seeds the file with the sample catalogue from the storefront.
 
-You can also run `npm run dev` inside `frontend/` to start only the frontend, or inside `backend/` to start only the backend. These folder commands delegate to the root scripts and shared dependency installation. Use either the combined server or the separate servers; do not start a second backend on port 3000.
+## Scope of the local product service
 
-## Local customer login
+- Admin login, product list, category filters, product create/edit/delete, and product image uploads.
+- The public catalogue reads the same saved product file, so a product added in Admin appears in the storefront and survives a server restart.
+- The service is a single-process, JSON-file implementation for local use and small single-instance deployments. Keep its data directory on persistent storage and back it up. Do not run multiple API replicas against the same JSON files.
 
-With other backend processes stopped, run `npm run account:demo` once. It creates a local test customer and prints its generated credentials, also saved in ignored `.data/demo-login.json`. Then start the application and visit `/login`. This is a customer account, not an administrator account. Live customers use Sign up.
+This local service intentionally returns an unavailable route for orders, customer accounts, Customs requests, and payments. Deploy a full backend for those features.
 
-Never commit `.data`, private `.env` files, passwords or database connection strings.
+## Production deployment
 
-## Production build
+Deploy `backend/server.mjs` as a Node service with a persistent data volume (start it with `npm run start:backend`). Set `ADMIN_PASSWORD`, `SESSION_SECRET`, `API_PUBLIC_URL`, `APP_ORIGINS`, and `VITE_API_BASE_URL` in the appropriate server/build environments. Keep the frontend and API on the same site (for example, `shop.example.com` and `api.example.com`) so the admin session cookie works. Never put server secrets in a `VITE_` variable.
 
-Run `npm ci --include=dev && npm run build` from the project root to build the frontend. Set `NODE_ENV=production` and start the backend with `npm start` to serve the frontend and `/api` from the same origin.
+For a larger or multi-instance deployment, replace the JSON-file store with a transactional database and shared media storage before adding replicas.
 
-The frontend builds to `frontend/dist`. `npm run preview` only previews built frontend assets; use the backend for full account testing.
+## Connect your replacement
 
-Account endpoints currently require `ACCOUNT_DATA_DIR` on a persistent disk in production. See CUSTOMER-ACCOUNTS.md for the current storage limitations and remaining production work.
+The frontend integration boundary is `frontend/src/services/`:
 
-## Recommended database
+- `api.ts`: catalogue, orders, Customs, store settings and events.
+- `account.ts`: account/session operations.
+- `http.ts`: optional HTTP transport, availability flag and response errors.
+- `shared/types.ts`: the data shapes consumed by the pages.
 
-Use PostgreSQL for the live store. It is suitable for customers, unique email addresses, products, inventory, carts, orders, order lines, payment attempts and sessions. Database transactions help keep related updates consistent.
+To use a different API, set `VITE_API_BASE_URL` in the root `.env` to its origin, then restart Vite or rebuild. The origin must serve the routes below. Requests include cookies; configure the replacement service for the frontend origin and its authentication approach.
 
-Use a managed PostgreSQL database for production and keep its connection URL **only on the backend**. Do not put database credentials into frontend variables prefixed with `VITE_`.
+| Frontend operation | Current HTTP contract |
+| --- | --- |
+| Catalogue | `GET /api/products` returns `Product[]` |
+| Product management | `POST /api/products`, `PUT /api/products/:id`, `DELETE /api/products/:id` |
+| Orders | `GET/POST /api/orders`, `PATCH /api/orders/:id/status` |
+| Customs | `GET/POST /api/custom-requests`, `PATCH /api/custom-requests/:id/status` |
+| Customer accounts | `/api/account/session`, `/signup`, `/login`, `/logout`, `/shopping`, `/orders` |
+| Admin authentication | `/api/admin/session`, `/login`, `/logout` |
+| Admin email | `/api/admin/customers`, `/api/admin/emails/status`, `/api/admin/emails`, `/api/admin/emails/send` |
+| Existing payment settings UI | `GET/POST /api/flutterwave/config` |
 
-PostgreSQL is a recommendation, not an already connected dependency: the application still uses `.data/customers.json` for accounts and in-memory legacy catalogue/demo data. A PostgreSQL migration needs tables, a backend database driver, data migration, and replacing the current file/in-memory repositories. Merely setting `DATABASE_URL` will not perform that migration.
+Successful responses contain the relevant JSON data (or HTTP 204 for void operations). Errors may return `{ "error": "message" }`. Customer sign-in returns `{ customer, cart, wishlist, orders }`; a guest session returns `{ customer: null }`. Admin session/sign-in returns `{ authenticated: boolean }`.
 
-## Verification
+The local product service supports product events at `GET /api/events`; the frontend polls this route so the customer catalogue updates after a product change. A replacement service can provide the same route or configure an SSE endpoint.
 
-`npm run lint`, `npm run test:accounts`, `npm run build`.
+The replacement service must own authentication, permissions, durable storage, pricing and payment verification. The retained checkout payload contains simulated payment-success fields, including when the signed-in screen says the order is unpaid; replace this behavior before accepting real orders. The current admin settings form shows non-secret fields, but the shared configuration type still includes `secret_key`. Remove that field from the browser contract and never return payment secrets to the frontend. Never put passwords or secret keys in `VITE_` variables, which are public browser configuration.
+
+The admin email panel sends individual plain-text messages via the connected backend. Configure Brevo only in the backend's private environment; signup, delivery-status and abandoned-cart automations are not enabled yet.
+
+## Existing data
+
+Ignored `.data/` files are preserved for migration and are not used by the standalone frontend. If an old local server was running during removal, its available catalogue, orders and Customs records were exported to `.data/legacy-backend-export.json` before shutdown. Existing guest carts and wishlists remain in browser storage. The old admin password and server-only environment settings are no longer used.
+
+## Build and deploy
+
+```sh
+npm run typecheck
+npm test
+npm run build
+npm run preview
+```
+
+The build output is `frontend/dist`. Deploy it to a static host and configure an SPA fallback to `index.html` for routes such as `/shop`, `/customs`, `/account` and `/admin`. `npm run preview` is a local build preview, not a production application server.

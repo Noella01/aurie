@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useTheme } from './useTheme';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AccountView } from './views/AccountView';
-import { accountRequest, type Account, type Customer } from './services/account';
+import { accountRequest, type Account, type Customer, type SavedShopping } from './services/account';
+import { lines, post, readStored, store } from './services/checkout';
+import { isBackendConfigured } from './services/http';
 import {
   Product,
   CartItem,
@@ -13,6 +14,7 @@ import {
   getProducts,
   subscribeToStoreEvents,
   INITIAL_PRODUCTS,
+  upsert,
 } from './services/api';
 
 // Components
@@ -31,16 +33,17 @@ import { ProductDetailView } from './views/ProductDetailView';
 import { CustomClothingView } from './views/CustomClothingView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 
-type AdminTab = 'overview' | 'products' | 'orders' | 'custom' | 'inventory' | 'payments' | 'settings';
+type AdminTab = 'overview' | 'products' | 'orders' | 'custom' | 'inventory' | 'payments' | 'emails' | 'settings';
 
 export default function App() {
-  const { theme, toggleTheme } = useTheme();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [accountOrders, setAccountOrders] = useState<Order[]>([]);
   const [accountLoading, setAccountLoading] = useState(true);
   const [accountError, setAccountError] = useState('');
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   // Products state
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>(isBackendConfigured ? [] : INITIAL_PRODUCTS);
+  const [catalogueError, setCatalogueError] = useState('');
 
   // Parse initial route from URL
   const parseRoute = useCallback(() => {
@@ -49,7 +52,7 @@ export default function App() {
 
     if (pathname.startsWith('/admin')) {
       const sub = pathname.replace('/admin', '').replace(/^\//, '').split('/')[0];
-      const validTabs: AdminTab[] = ['overview', 'products', 'orders', 'custom', 'inventory', 'payments', 'settings'];
+      const validTabs: AdminTab[] = ['overview', 'products', 'orders', 'custom', 'inventory', 'payments', 'emails', 'settings'];
       const adminTab: AdminTab = validTabs.includes(sub as any) ? (sub as AdminTab) : 'overview';
       return {
         role: 'admin' as const,
@@ -64,7 +67,7 @@ export default function App() {
       customerView = pathname.slice(1);
     } else if (pathname.startsWith('/shop')) {
       customerView = 'shop';
-    } else if (pathname.startsWith('/custom')) {
+    } else if (['/custom', '/customs'].includes(pathname.replace(/\/+$/, ''))) {
       customerView = 'custom';
     }
 
@@ -81,9 +84,6 @@ export default function App() {
   }, []);
 
   const [currentRole, setCurrentRole] = useState<'customer' | 'admin'>(() => parseRoute().role);
-  useEffect(() => {
-    document.documentElement.dataset.theme = currentRole === 'admin' ? 'dark' : theme;
-  }, [theme, currentRole]);
   const [activeView, setActiveView] = useState<string>(() => parseRoute().customerView);
   const [adminTab, setAdminTab] = useState<AdminTab>(() => parseRoute().adminTab);
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>(() => parseRoute().category);
@@ -91,37 +91,89 @@ export default function App() {
 
   // Cart & Wishlist state
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('lenos_cart');
-    return saved ? JSON.parse(saved) : [];
+    const saved = readStored<unknown>('lenos_cart', []);
+    return Array.isArray(saved) ? saved.filter(i=>i?.product?.id && i?.selectedSize && i?.selectedColor?.name && Number.isInteger(i?.quantity) && i.quantity>0) : [];
   });
   const [wishlist, setWishlist] = useState<Product[]>(() => {
-    const saved = localStorage.getItem('lenos_wishlist');
-    return saved ? JSON.parse(saved) : [];
+    const saved = readStored<unknown>('lenos_wishlist', []);
+    return Array.isArray(saved) ? saved.filter(i=>i?.id) : [];
   });
 
+  const shoppingVersion = useRef(0);
+  const savedSignature = useRef('');
+  const saving = useRef<Promise<void> | null>(null);
+  const shoppingState = useRef({customer,cartItems,wishlist});
+  shoppingState.current = {customer,cartItems,wishlist};
+  const signature = (cart:CartItem[], wishes:Product[]) => JSON.stringify({cart:lines(cart),wishlist:wishes.map(p=>p.id)});
+  const applyShopping = (state:SavedShopping) => {
+    shoppingVersion.current=state.shopping_version;
+    savedSignature.current=signature(state.cart,state.wishlist);
+    setCartItems(state.cart);setWishlist(state.wishlist);
+  };
+  const flushShopping = async ():Promise<number|undefined> => {
+    if(saving.current) await saving.current;
+    const state=shoppingState.current;
+    if(!state.customer)return;
+    const snapshot=signature(state.cartItems,state.wishlist);
+    if(snapshot===savedSignature.current)return shoppingVersion.current;
+    const operation=async()=>{
+      try {
+        const result=await accountRequest<SavedShopping>('shopping',{cart:lines(state.cartItems),wishlist:state.wishlist.map(p=>p.id),expected_version:shoppingVersion.current},'PUT');
+        shoppingVersion.current=result.shopping_version;savedSignature.current=snapshot;localStorage.removeItem(`aurie_unsaved_${state.customer!.id}`);setAccountError('');
+      } catch(e) {
+        store(`aurie_unsaved_${state.customer!.id}`,{cart:state.cartItems,wishlist:state.wishlist});
+        if((e as any).code==='SHOPPING_CONFLICT'){
+          const latest=await accountRequest<Account>('session');
+          if(latest.customer){applyShopping(latest);setAccountOrders(latest.orders);}
+        }
+        setAccountError((e as Error).message+' Your unsaved bag has been kept in this browser for recovery.');throw e;
+      }
+    };
+    const pending=operation();saving.current=pending;
+    try {await pending;}finally {if(saving.current===pending)saving.current=null;}
+    return shoppingVersion.current;
+  };
+  const mergeGuest = async (account:Account) => {
+    const guestCart=readStored<CartItem[]>('lenos_cart',[]),guestWishlist=readStored<Product[]>('lenos_wishlist',[]);
+    if(!Array.isArray(guestCart)||!Array.isArray(guestWishlist))return account;
+    const body={cart:lines(guestCart),wishlist:guestWishlist.map(p=>p.id)};
+    if(!body.cart.length&&!body.wishlist.length)return account;
+    const merge=async()=>{
+      const latestCart=readStored<CartItem[]>('lenos_cart',[]),latestWishlist=readStored<Product[]>('lenos_wishlist',[]);
+      if(!latestCart.length&&!latestWishlist.length)return accountRequest<Account>('session');
+      body.cart=lines(latestCart);body.wishlist=latestWishlist.map(p=>p.id);
+      const stored=readStored<{key:string;signature:string}|null>('aurie_guest_merge',null),snapshot=JSON.stringify(body);
+      const key=stored?.signature===snapshot?stored.key:crypto.randomUUID();store('aurie_guest_merge',{key,signature:snapshot});
+      const result=await post<SavedShopping>('/api/account/shopping/merge',body,key);
+      if(JSON.stringify({cart:lines(readStored<CartItem[]>('lenos_cart',[])),wishlist:readStored<Product[]>('lenos_wishlist',[]).map(p=>p.id)})===snapshot){localStorage.removeItem('lenos_cart');localStorage.removeItem('lenos_wishlist');localStorage.removeItem('aurie_guest_merge');}
+      return {...account,...result};
+    };
+    return navigator.locks ? navigator.locks.request('monve-guest-merge',merge) : merge();
+  };
+
   useEffect(() => {
-    accountRequest<Account | { customer: null }>('session').then(data => {
+    if (!isBackendConfigured) { setAccountLoading(false); return; }
+    accountRequest<Account | { customer: null }>('session').then(async data => {
       if (data.customer) {
         const account = data as Account;
-        setCustomer(account.customer); setCartItems(account.cart);
-        setWishlist(account.wishlist); setAccountOrders(account.orders);
+        setCustomer(account.customer);applyShopping(account);setAccountOrders(account.orders);
+        try {applyShopping(await mergeGuest(account));}catch(e){setAccountError((e as Error).message+' Guest items remain saved in this browser.');}
+        if(readStored(`aurie_unsaved_${account.customer.id}`,null))setAccountError('An unsaved shopping backup is available in this browser.');
       }
     }).catch(() => { /* Guest shopping remains available if accounts are offline. */ })
       .finally(() => setAccountLoading(false));
   }, []);
 
   useEffect(() => {
-    if (!customer || accountLoading) return;
+    if (!customer || accountLoading || isCheckoutOpen) return;
     const timer = setTimeout(() => {
-      accountRequest('shopping', { cart: cartItems, wishlist }, 'PUT')
-        .then(() => setAccountError('')).catch(e => setAccountError(e.message));
+      void flushShopping().catch(()=>undefined);
     }, 400);
     return () => clearTimeout(timer);
-  }, [customer, cartItems, wishlist, accountLoading]);
+  }, [customer, cartItems, wishlist, accountLoading, isCheckoutOpen]);
 
   // Modals
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -156,9 +208,10 @@ export default function App() {
 
   // Load products on mount
   useEffect(() => {
-    getProducts().then((data) => setProducts(data));
+    getProducts().then((data) => {setProducts(data);setCatalogueError('');}).catch(() => {setCatalogueError('The catalogue is temporarily unavailable. Please refresh to retry.');});
 
     const unsubOrder = subscribeToStoreEvents('order_updated', (order: Order) => {
+      setAccountOrders(prev=>prev.some(p=>p.id===order.id)?upsert(prev,order):prev);
       setLiveToast({
         message: `Order #${order.order_number} Status Updated`,
         sub: `New status: ${order.status} (${new Date().toLocaleTimeString()})`,
@@ -167,11 +220,12 @@ export default function App() {
     });
 
     const unsubProductCreated = subscribeToStoreEvents('product_created', (newProd: Product) => {
-      setProducts((prev) => [newProd, ...prev]);
+      setProducts((prev) => upsert(prev,newProd));
     });
 
     const unsubProductUpdated = subscribeToStoreEvents('product_updated', (updProd: Product) => {
-      setProducts((prev) => prev.map((p) => (p.id === updProd.id ? updProd : p)));
+      setProducts((prev) => upsert(prev,updProd));
+      setSelectedProduct(prev=>prev?.id===updProd.id?updProd:prev);
     });
 
     const unsubProductDeleted = subscribeToStoreEvents('product_deleted', ({ id }: { id: string }) => {
@@ -186,13 +240,20 @@ export default function App() {
     };
   }, []);
 
+  useEffect(()=>{
+    if(!customer)return;
+    const refresh=()=>accountRequest<Order[]>('orders').then(setAccountOrders).catch(()=>undefined);
+    const timer=setInterval(refresh,10000);
+    return()=>clearInterval(timer);
+  },[customer?.id]);
+
   // Save cart & wishlist to localStorage
   useEffect(() => {
-    if (!customer && !accountLoading) localStorage.setItem('lenos_cart', JSON.stringify(cartItems));
+    if (!customer && !accountLoading) {try{localStorage.setItem('lenos_cart', JSON.stringify(cartItems));}catch{setAccountError('This browser could not save your bag.');}}
   }, [cartItems, customer, accountLoading]);
 
   useEffect(() => {
-    if (!customer && !accountLoading) localStorage.setItem('lenos_wishlist', JSON.stringify(wishlist));
+    if (!customer && !accountLoading) {try{localStorage.setItem('lenos_wishlist', JSON.stringify(wishlist));}catch{setAccountError('This browser could not save your favourites.');}}
   }, [wishlist, customer, accountLoading]);
 
   // Cart operations
@@ -212,7 +273,7 @@ export default function App() {
 
       if (existingIdx > -1) {
         const next = [...prev];
-        next[existingIdx].quantity += quantity;
+        next[existingIdx] = {...next[existingIdx],quantity:Math.min(99,product.stock,next[existingIdx].quantity+quantity)};
         return next;
       }
       return [...prev, { product, selectedSize: size, selectedColor: color, quantity }];
@@ -238,7 +299,7 @@ export default function App() {
     }
     setCartItems((prev) => {
       const next = [...prev];
-      next[idx].quantity = newQty;
+      next[idx] = {...next[idx],quantity:Math.min(99,next[idx].product.stock,newQty)};
       return next;
     });
   };
@@ -271,7 +332,7 @@ export default function App() {
         navigateTo('/shop');
       }
     } else if (view === 'custom') {
-      navigateTo('/custom');
+      navigateTo('/customs');
     } else {
       setActiveView(view);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -326,16 +387,6 @@ export default function App() {
       {/* Main Navbar */}
       <Navbar
         customerName={customer?.name}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        currentRole={currentRole}
-        onSwitchRole={(role) => {
-          if (role === 'admin') {
-            navigateTo('/admin');
-          } else {
-            navigateTo('/');
-          }
-        }}
         activeView={activeView}
         onNavigate={handleNavigate}
         cartCount={cartCount}
@@ -347,28 +398,34 @@ export default function App() {
 
       {/* Main View Router */}
       <main className="flex-1">
+        {catalogueError && <p role="alert" className="p-4 text-center">{catalogueError}</p>}
+        {readStored<any>(`aurie_checkout_${customer?.id || 'guest'}`,null)?.order && <div className="p-3 text-center text-sm"><button className="underline" onClick={()=>setIsCheckoutOpen(true)}>Resume saved order / check payment</button></div>}
         {['login', 'signup', 'account'].includes(activeView) && <AccountView
           key={customer?.id || activeView}
           mode={activeView} customer={customer} orders={accountOrders} loading={accountLoading}
           cartCount={cartCount} wishlistCount={wishlist.length} error={accountError}
           onNavigate={handleNavigate} onCart={() => setIsCartOpen(true)} onWishlist={() => setIsWishlistOpen(true)}
-          onAuthenticated={(account) => {
-            const merged = [...account.cart];
-            for (const item of cartItems) {
-              const existing = merged.find(i => i.product.id === item.product.id && i.selectedSize === item.selectedSize && i.selectedColor.name === item.selectedColor.name);
-              if (existing) existing.quantity = Math.min(99, existing.quantity + item.quantity);
-              else merged.push(item);
-            }
-            setCartItems(merged);
-            setWishlist([...account.wishlist, ...wishlist.filter(w => !account.wishlist.some(a => a.id === w.id))]);
-            setCustomer(account.customer); setAccountOrders(account.orders); setAccountError('');
-            localStorage.removeItem('lenos_cart'); localStorage.removeItem('lenos_wishlist');
+          onResumeOrder={order=>{store(`aurie_checkout_${customer!.id}`,{key:crypto.randomUUID(),token:'',order});setIsCheckoutOpen(true);}}
+          onRecoverShopping={async()=>{
+            const current=await accountRequest<Account>('session');
+            const unsaved=readStored<{cart:CartItem[];wishlist:Product[]}|null>(`aurie_unsaved_${customer!.id}`,null);
+            if(unsaved){const recovered=await accountRequest<SavedShopping>('shopping',{cart:lines(unsaved.cart),wishlist:unsaved.wishlist.map(p=>p.id),expected_version:current.shopping_version},'PUT');applyShopping(recovered);localStorage.removeItem(`aurie_unsaved_${customer!.id}`);}
+            else applyShopping(await mergeGuest(current));
+            setAccountError('');
+          }}
+          onAuthenticated={async(account) => {
+            setCustomer(account.customer);applyShopping(account);setAccountOrders(account.orders);setAccountError('');
+            try{applyShopping(await mergeGuest(account));}catch(e){setAccountError((e as Error).message+' Guest items remain saved.');}
+            if(readStored(`aurie_unsaved_${account.customer.id}`,null))setAccountError('An unsaved shopping backup is available in this browser.');
             navigateTo('/account');
           }}
           onLogout={async () => {
-            await accountRequest('shopping', { cart: cartItems, wishlist }, 'PUT');
+            if(signature(cartItems,wishlist)!==savedSignature.current)store(`aurie_unsaved_${customer!.id}`,{cart:cartItems,wishlist});
             await accountRequest('logout', {});
-            setCustomer(null); setAccountOrders([]); setCartItems([]); setWishlist([]);
+            setCustomer(null);setAccountOrders([]);
+            const guestCart=readStored<unknown>('lenos_cart',[]),guestWishlist=readStored<unknown>('lenos_wishlist',[]);
+            setCartItems(Array.isArray(guestCart)?guestCart.filter(i=>i?.product?.id&&i?.selectedSize&&i?.selectedColor?.name&&Number.isInteger(i?.quantity)&&i.quantity>0):[]);
+            setWishlist(Array.isArray(guestWishlist)?guestWishlist.filter(i=>i?.id):[]);
             setIsCheckoutOpen(false); setAccountError(''); navigateTo('/');
           }}
         />}
@@ -399,6 +456,7 @@ export default function App() {
 
         {activeView === 'product-detail' && selectedProduct && (
           <ProductDetailView
+            key={selectedProduct.id}
             product={selectedProduct}
             onBack={() => navigateTo('/shop')}
             isWishlisted={wishlistIds.includes(selectedProduct.id)}
@@ -421,14 +479,6 @@ export default function App() {
       {/* Footer */}
       <Footer
         onNavigate={handleNavigate}
-        onSwitchRole={(role) => {
-          if (role === 'admin') {
-            navigateTo('/admin');
-          } else {
-            navigateTo('/');
-          }
-        }}
-        currentRole={currentRole}
       />
 
       {/* Cart Drawer */}
@@ -452,8 +502,9 @@ export default function App() {
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         cartItems={cartItems}
+        prepareCheckout={flushShopping}
         onOrderSuccess={(order) => {
-          if (customer) setAccountOrders(prev => [order, ...prev]);
+          if (customer) {setAccountOrders(prev => upsert(prev,order));shoppingVersion.current+=1;savedSignature.current=signature([],wishlist);}
           setCartItems([]);
         }}
         onViewOrders={() => {

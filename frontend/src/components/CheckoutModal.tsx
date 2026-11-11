@@ -1,511 +1,75 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, CheckCircle2, Shield, CreditCard, Smartphone, ArrowRight, Loader2, Truck } from 'lucide-react';
-import { CartItem, Order, PaymentMethod } from '../types';
-import { createOrder } from '../services/api';
-import { accountRequest, type Customer } from '../services/account';
+import React, { useEffect, useState } from 'react';
+import { X, Loader2, ArrowRight, CheckCircle2 } from 'lucide-react';
+import type { CartItem, Order } from '../types';
+import type { Customer } from '../services/account';
+import { apiRequest, isBackendConfigured, ApiError } from '../services/http';
+import { lines, post, privateToken, readStored, store, paymentStatus, type Intent, type Quote, type Payment } from '../services/checkout';
 
-interface CheckoutModalProps {
-  customer?: Customer | null;
-  onLogin?: () => void;
-  isOpen: boolean;
-  onClose: () => void;
-  cartItems: CartItem[];
-  onOrderSuccess: (order: Order) => void;
-  onViewOrders: () => void;
-}
-
-export const CheckoutModal: React.FC<CheckoutModalProps> = ({
-  customer,
-  onLogin,
-  isOpen,
-  onClose,
-  cartItems,
-  onOrderSuccess,
-  onViewOrders
-}) => {
-  const [step, setStep] = useState<'details' | 'payment_prompt' | 'success'>('details');
-  const [fullName, setFullName] = useState(customer?.name || '');
-  const [email, setEmail] = useState(customer?.email || '');
-  const [phone, setPhone] = useState('+250 78');
-  const [province, setProvince] = useState('Kigali City');
-  const [district, setDistrict] = useState('Gasabo');
-  const [sector, setSector] = useState('Kimihurura');
-  const [street, setStreet] = useState('');
-  const [deliveryNotes, setDeliveryNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('flutterwave_momo');
-  const [momoNumber, setMomoNumber] = useState('');
-
-  // Processing states
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [completedOrder, setCompletedOrder] = useState<Order | null>(null);
-  const checkoutKey = useRef(crypto.randomUUID());
-  useEffect(() => {
-    if (!isOpen && !isProcessing) {
-      setStep('details'); setCompletedOrder(null);
-      checkoutKey.current = crypto.randomUUID();
-    }
-  }, [isOpen, isProcessing]);
-
-  if (!isOpen) return null;
-
-  const subtotal = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const deliveryFee = subtotal > 120000 ? 0 : 2500;
-  const total = subtotal + deliveryFee;
-
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('en-RW', {
-      style: 'currency',
-      currency: 'RWF',
-      maximumFractionDigits: 0
-    }).format(val);
-
-  const handleSubmitDetails = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fullName || !email || !phone || !street) {
-      alert('Please fill in your delivery contact and location in Rwanda.');
-      return;
-    }
-    if (customer) { void handleSimulatePayment(); return; }
-    setStep('payment_prompt');
-  };
-
-  const handleSimulatePayment = async () => {
-    setIsProcessing(true);
-
-    try {
-      const orderPayload: Partial<Order> = {
-        customer_name: fullName,
-        customer_email: email,
-        customer_phone: phone,
-        delivery_province: province,
-        delivery_district: district,
-        delivery_sector: sector,
-        delivery_street: street,
-        delivery_notes: deliveryNotes,
-        items: cartItems.map((item) => ({
-          product_id: item.product.id,
-          product_name: item.product.name,
-          product_image: item.product.image_url || '',
-          size: item.selectedSize,
-          color: item.selectedColor.name,
-          quantity: item.quantity,
-          price: item.product.price
-        })),
-        subtotal,
-        delivery_fee: deliveryFee,
-        total,
-        currency: 'RWF',
-        status: 'CONFIRMED',
-        payment_status: 'SUCCESSFUL',
-        payment_method: paymentMethod,
-        transaction_reference: `FLW-TX-RW-${Date.now().toString().slice(-6)}`,
-        flutterwave_tx_id: String(Math.floor(1000000 + Math.random() * 9000000)),
-      };
-
-      // Call API to create order
-      const newOrder = customer
-        ? await accountRequest<Order>('orders', { ...orderPayload, checkout_key: checkoutKey.current })
-        : await createOrder(orderPayload);
-      setCompletedOrder(newOrder);
-      onOrderSuccess(newOrder);
-      setStep('success');
-    } catch (err) {
-      console.error(err);
-      alert((err as Error).message || 'Could not complete order. Please retry.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] w-full max-w-2xl max-h-[calc(100dvh-2rem)] rounded-none shadow-2xl overflow-y-auto relative animate-fade-in text-[var(--tone-f5f5f5)]">
-        {/* Header */}
-        <div className="p-6 border-b border-[var(--tone-222222)] flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--tone-888888)] font-semibold">
-              AURIE CHECKOUT
-            </span>
-            <h2 className="font-heading text-lg font-bold text-[var(--tone-ffffff)] tracking-wide">
-              {step === 'details' && 'Shipping & Payment Information'}
-              {step === 'payment_prompt' && 'Authorize Flutterwave Payment'}
-              {step === 'success' && (customer ? 'Order saved · awaiting payment' : 'Order Successfully Confirmed')}
-            </h2>
-          </div>
-          {step !== 'success' && (
-            <button
-              onClick={onClose}
-              aria-label="Close checkout"
-              className="text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] p-1 rounded hover:bg-[var(--tone-1e1e1e)]"
-            >
-              <X size={20} />
-            </button>
-          )}
-        </div>
-
-        {/* Step 1: Customer & Delivery Details */}
-        {step === 'details' && (
-          <form onSubmit={handleSubmitDetails} className="p-6 space-y-5">
-            {!customer && <p className="text-sm"><button type="button" className="underline" onClick={onLogin}>Log in or create an account</button> to save your cart and see orders in My account. You can also continue as a guest.</p>}
-            <p className="text-sm">{customer ? 'Your order will be saved as awaiting payment. No payment will be collected yet.' : 'Demo checkout: payments are simulated. Do not enter real card details.'}</p>
-            <div>
-              <h3 className="text-xs uppercase tracking-widest text-[var(--tone-a3a3a3)] mb-3 font-semibold flex items-center gap-1.5">
-                <Truck size={14} />
-                <span>Customer & Delivery Details (Rwanda)</span>
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Jean-Paul Mugisha"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="e.g. mugisha@domain.rw"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Rwanda Phone Number (for delivery & MoMo) *
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+250 788 123 456"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Province *
-                  </label>
-                  <select
-                    value={province}
-                    onChange={(e) => setProvince(e.target.value)}
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  >
-                    <option value="Kigali City">Kigali City</option>
-                    <option value="Northern Province">Northern Province (Amajyaruguru)</option>
-                    <option value="Southern Province">Southern Province (Amajyepfo)</option>
-                    <option value="Eastern Province">Eastern Province (Iburasirazuba)</option>
-                    <option value="Western Province">Western Province (Iburengerazuba)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    District *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={district}
-                    onChange={(e) => setDistrict(e.target.value)}
-                    placeholder="e.g. Gasabo, Kicukiro, Nyarugenge"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Sector & Cell *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={sector}
-                    onChange={(e) => setSector(e.target.value)}
-                    placeholder="e.g. Kimihurura, Rugando"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Street Address / House # / Landmark *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={street}
-                    onChange={(e) => setStreet(e.target.value)}
-                    placeholder="e.g. KG 674 St, Villa 12, Near Convention Center"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Delivery Instructions (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={deliveryNotes}
-                    onChange={(e) => setDeliveryNotes(e.target.value)}
-                    placeholder="e.g. Gate code, call security upon arrival"
-                    className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2.5 rounded text-[var(--tone-ffffff)] focus:outline-none focus:border-[var(--tone-ffffff)]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Method Selector */}
-            <div className="pt-3 border-t border-[var(--tone-222222)]">
-              <h3 className="text-xs uppercase tracking-widest text-[var(--tone-a3a3a3)] mb-3 font-semibold flex items-center gap-1.5">
-                <Shield size={14} />
-                <span>Select Payment Method (Flutterwave Gateway)</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label
-                  onClick={() => setPaymentMethod('flutterwave_momo')}
-                  className={`p-3.5 border cursor-pointer flex items-center justify-between transition-colors ${
-                    paymentMethod === 'flutterwave_momo'
-                      ? 'border-[var(--tone-ffffff)] bg-[var(--tone-1f1f1f)]'
-                      : 'border-[var(--tone-262626)] bg-[var(--tone-161616)] hover:border-[var(--tone-737373)]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Smartphone size={18} className="text-[var(--tone-f5f5f5)]" />
-                    <div>
-                      <div className="text-xs font-semibold text-[var(--tone-ffffff)]">Rwanda Mobile Money</div>
-                      <div className="text-[10px] text-[var(--tone-a3a3a3)]">MTN MoMo & Airtel Money (RWF)</div>
-                    </div>
-                  </div>
-                  <input
-                    type="radio"
-                    name="pm"
-                    checked={paymentMethod === 'flutterwave_momo'}
-                    onChange={() => setPaymentMethod('flutterwave_momo')}
-                    className="accent-white"
-                  />
-                </label>
-
-                <label
-                  onClick={() => setPaymentMethod('flutterwave_card')}
-                  className={`p-3.5 border cursor-pointer flex items-center justify-between transition-colors ${
-                    paymentMethod === 'flutterwave_card'
-                      ? 'border-[var(--tone-ffffff)] bg-[var(--tone-1f1f1f)]'
-                      : 'border-[var(--tone-262626)] bg-[var(--tone-161616)] hover:border-[var(--tone-737373)]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <CreditCard size={18} className="text-[var(--tone-e5e5e5)]" />
-                    <div>
-                      <div className="text-xs font-semibold text-[var(--tone-ffffff)]">Credit / Debit Card</div>
-                      <div className="text-[10px] text-[var(--tone-a3a3a3)]">Visa, Mastercard (Flutterwave)</div>
-                    </div>
-                  </div>
-                  <input
-                    type="radio"
-                    name="pm"
-                    checked={paymentMethod === 'flutterwave_card'}
-                    onChange={() => setPaymentMethod('flutterwave_card')}
-                    className="accent-white"
-                  />
-                </label>
-              </div>
-            </div>
-
-            {/* Price review */}
-            <div className="p-4 bg-[var(--tone-0a0a0a)] border border-[var(--tone-222222)] flex justify-between items-center text-xs">
-              <div>
-                <span className="text-[var(--tone-a3a3a3)]">Order Total ({cartItems.length} items): </span>
-                <span className="font-heading font-bold text-base text-[var(--tone-ffffff)] ml-2">{formatCurrency(total)}</span>
-              </div>
-              <span className="text-[11px] text-[var(--tone-a3a3a3)]">{customer ? 'Payment pending' : 'Demo checkout'}</span>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isProcessing || cartItems.length === 0}
-              className="w-full bg-[var(--tone-ffffff)] hover:bg-[var(--tone-e5e5e5)] text-[var(--tone-000000)] py-3 px-4 font-semibold text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-colors"
-            >
-              <span>{isProcessing ? 'Saving…' : customer ? 'Save order · pay later' : 'Continue to demo payment'}</span>
-              <ArrowRight size={14} />
-            </button>
-          </form>
-        )}
-
-        {/* Step 2: Realistic Flutterwave Payment Prompt */}
-        {step === 'payment_prompt' && (
-          <div className="p-6 space-y-6">
-            <div className="text-center py-4 bg-[var(--tone-0d0d0d)] border border-[var(--tone-262626)]">
-              <div className="w-12 h-12 mx-auto rounded-full bg-[var(--tone-262626)] flex items-center justify-center text-[var(--tone-ffffff)] mb-2">
-                {paymentMethod === 'flutterwave_momo' ? <Smartphone size={22} /> : <CreditCard size={22} />}
-              </div>
-              <h4 className="font-heading text-sm font-bold text-[var(--tone-ffffff)] uppercase tracking-wider">
-                Flutterwave Secure Checkout
-              </h4>
-              <p className="text-xs text-[var(--tone-a3a3a3)] mt-1">
-                Merchant: <span className="text-[var(--tone-ffffff)] font-medium">AURIE Rwanda</span>
-              </p>
-              <div className="font-heading text-2xl font-bold text-[var(--tone-ffffff)] mt-2">
-                {formatCurrency(total)}
-              </div>
-            </div>
-
-            {paymentMethod === 'flutterwave_momo' ? (
-              <div className="space-y-4 bg-[var(--tone-161616)] p-4 border border-[var(--tone-282828)]">
-                <div className="flex items-center gap-2 text-xs text-[var(--tone-f5f5f5)]">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-                  <span className="font-semibold">Rwanda Mobile Money (MTN / Airtel) Prompt</span>
-                </div>
-                <p className="text-xs text-[var(--tone-d4d4d4)]">
-                  A USSD prompt will be sent to your phone to confirm debiting <strong>{formatCurrency(total)}</strong>.
-                </p>
-
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    MoMo Number (MTN / Airtel Rwanda)
-                  </label>
-                  <input
-                    type="tel"
-                    value={momoNumber || phone}
-                    onChange={(e) => setMomoNumber(e.target.value)}
-                    placeholder="+250 788 000 000"
-                    className="w-full bg-[var(--tone-0d0d0d)] border border-[var(--tone-333333)] text-sm px-3 py-2 text-[var(--tone-ffffff)] rounded font-mono"
-                  />
-                </div>
-
-                <div className="text-[11px] text-[var(--tone-a3a3a3)] bg-[var(--tone-0a0a0a)] p-3 border border-[var(--tone-222222)]">
-                  <strong>How it works:</strong> You will receive a prompt on your phone screen: <em>"Pay {formatCurrency(total)} to AURIE?"</em>. Enter your PIN to complete the transaction.
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4 bg-[var(--tone-161616)] p-4 border border-[var(--tone-282828)]">
-                <div className="text-xs text-[var(--tone-d4d4d4)] font-semibold mb-2">Card Details Simulation</div>
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    disabled
-                    value="•••• •••• •••• 4242 (Flutterwave Test Card)"
-                    className="w-full bg-[var(--tone-0d0d0d)] border border-[var(--tone-333333)] text-xs px-3 py-2 text-[var(--tone-d4d4d4)] rounded font-mono"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      disabled
-                      value="12/28"
-                      className="w-1/2 bg-[var(--tone-0d0d0d)] border border-[var(--tone-333333)] text-xs px-3 py-2 text-[var(--tone-d4d4d4)] rounded font-mono"
-                    />
-                    <input
-                      type="text"
-                      disabled
-                      value="CVC: •••"
-                      className="w-1/2 bg-[var(--tone-0d0d0d)] border border-[var(--tone-333333)] text-xs px-3 py-2 text-[var(--tone-d4d4d4)] rounded font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setStep('details')}
-                disabled={isProcessing}
-                className="w-1/3 py-3 px-4 border border-[var(--tone-333333)] text-xs uppercase tracking-wider text-[var(--tone-d4d4d4)] hover:text-[var(--tone-ffffff)] hover:bg-[var(--tone-1a1a1a)] transition-colors"
-              >
-                Back
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSimulatePayment}
-                disabled={isProcessing}
-                className="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs uppercase tracking-[0.15em] py-3 px-4 flex items-center justify-center gap-2 transition-colors"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Verifying Flutterwave Transaction...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={16} />
-                    <span>Authorize & Pay {formatCurrency(total)}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Order Confirmation as requested in PDF section 23 */}
-        {step === 'success' && completedOrder && (
-          <div className="p-8 text-center space-y-6">
-            <div className="w-16 h-16 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto">
-              <CheckCircle2 size={32} />
-            </div>
-
-            <div>
-              <span className="text-emerald-400 font-bold uppercase tracking-widest text-xs">
-                {customer ? 'ORDER SAVED · AWAITING PAYMENT' : 'DEMO ORDER CONFIRMED'}
-              </span>
-              <h3 className="font-heading text-2xl font-bold text-[var(--tone-ffffff)] mt-1">
-                Thank you for shopping with AURIE.
-              </h3>
-              <p className="text-xs text-[var(--tone-a3a3a3)] mt-2 max-w-md mx-auto">
-                {customer ? 'Your order is in My account. No payment has been collected and dispatch has not been confirmed.' : 'This is a simulated order. No real payment has been collected.'}
-              </p>
-            </div>
-
-            <div className="bg-[var(--tone-171717)] border border-[var(--tone-292929)] p-5 max-w-md mx-auto text-left space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-[var(--tone-a3a3a3)]">Order Number:</span>
-                <span className="font-mono font-bold text-[var(--tone-ffffff)]">#{completedOrder.order_number}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--tone-a3a3a3)]">{customer ? 'Amount due:' : 'Simulated total:'}</span>
-                <span className="font-bold text-emerald-400">{formatCurrency(completedOrder.total)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--tone-a3a3a3)]">Payment Gateway:</span>
-                <span className="text-[var(--tone-ffffff)]">Flutterwave ({completedOrder.payment_method})</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-[var(--tone-a3a3a3)]">Destination:</span>
-                <span className="text-[var(--tone-ffffff)] line-clamp-1">{completedOrder.delivery_district}, {completedOrder.delivery_province}</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto pt-2">
-              {customer && <button
-                onClick={() => {
-                  onClose();
-                  onViewOrders();
-                }}
-                className="bg-[var(--tone-ffffff)] hover:bg-[var(--tone-e5e5e5)] text-[var(--tone-000000)] py-3 px-6 text-xs uppercase tracking-widest font-semibold flex items-center justify-center gap-2 transition-colors"
-              >
-                <span>View my orders</span>
-                <ArrowRight size={14} />
-              </button>}
-
-              <button
-                onClick={onClose}
-                className="border border-[var(--tone-333333)] hover:border-[var(--tone-737373)] text-[var(--tone-d4d4d4)] hover:text-[var(--tone-ffffff)] py-3 px-6 text-xs uppercase tracking-widest font-medium transition-colors"
-              >
-                Continue Shopping
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+interface Props { customer?:Customer|null;onLogin?:()=>void;isOpen:boolean;onClose:()=>void;cartItems:CartItem[];onOrderSuccess:(order:Order)=>void;onViewOrders:()=>void;prepareCheckout?:()=>Promise<number|undefined> }
+const money=(value:number)=>new Intl.NumberFormat('en-RW',{style:'currency',currency:'RWF',maximumFractionDigits:0}).format(value);
+export const CheckoutModal:React.FC<Props>=({customer,onLogin,isOpen,onClose,cartItems,onOrderSuccess,onViewOrders,prepareCheckout})=>{
+  const storageKey=`aurie_checkout_${customer?.id || 'guest'}`;
+  const fresh=():Intent=>({key:crypto.randomUUID(),token:privateToken()});
+  const [intent,setIntent]=useState<Intent>(()=>readStored(storageKey,fresh()));
+  const [details,setDetails]=useState({customer_name:customer?.name || '',customer_email:customer?.email || '',customer_phone:'+250',delivery_province:'Kigali',delivery_district:'',delivery_sector:'',delivery_street:'',delivery_notes:''});
+  const [quote,setQuote]=useState<Quote|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [methods,setMethods]=useState<string[]>([]),[method,setMethod]=useState(''),[payer,setPayer]=useState('');
+  const [attempt,setAttempt]=useState<Payment|null>(null);
+  const persist=(next:Intent)=>{store(storageKey,next);setIntent(next);};
+  useEffect(()=>{
+    if(!isOpen || !isBackendConfigured)return;
+    const saved=readStored(storageKey,fresh());setIntent(saved);
+    if(saved.payload)setDetails(previous=>Object.fromEntries(Object.keys(previous).map(key=>[key,typeof saved.payload?.[key]==='string'?saved.payload[key]:(previous as any)[key]])) as typeof previous);
+    apiRequest<{enabled_methods:string[]}>('/api/payments/config').then(data=>{setMethods(data.enabled_methods);setMethod(current=>current || data.enabled_methods[0] || '');}).catch(e=>setError(e.message));
+  },[isOpen]);
+  useEffect(()=>{
+    if(!isOpen || !intent.order)return;
+    let active=true;
+    const refresh=()=>paymentStatus(intent.order!.id,intent.token).then(data=>{if(!active)return;setIntent(previous=>{const next={...previous,order:data.order};store(storageKey,next);return next;});setAttempt(data.attempts[0] || null);}).catch(e=>{if(active)setError(e.message);});
+    void refresh();const timer=setInterval(refresh,5000);return()=>{active=false;clearInterval(timer);};
+  },[isOpen,intent.order?.id,storageKey]);
+  if(!isOpen)return null;
+  const run=async(action:()=>Promise<void>)=>{if(busy)return;setBusy(true);setError('');try{await action();}catch(e){setError(e instanceof Error?e.message:'Please try again.');if(!intent.order && e instanceof ApiError && ['QUOTE_CHANGED','SHOPPING_CONFLICT','STOCK_CONFLICT'].includes(e.code || '')){persist(fresh());setQuote(null);}}finally{setBusy(false);}};
+  const review=(event:React.FormEvent)=>{event.preventDefault();void run(async()=>{
+    if(intent.payload){const saved=await post<Order>(customer?'/api/account/orders':'/api/orders',intent.payload,intent.key);persist({...intent,order:saved});onOrderSuccess(saved);return;}
+    const next=await post<Quote>('/api/checkout/quote',{items:lines(cartItems),delivery_province:details.delivery_province});setQuote(next);
+  });};
+  const save=()=>void run(async()=>{
+    if(!quote)return;
+    if(intent.payload){const saved=await post<Order>(customer?'/api/account/orders':'/api/orders',intent.payload,intent.key);persist({...intent,order:saved});onOrderSuccess(saved);return;}
+    const version=await prepareCheckout?.();
+    const payload={...details,items:lines(cartItems),quote_fingerprint:quote.quote_fingerprint,...(customer?{shopping_version:version}:{access_token:intent.token})};
+    const pending={...intent,payload};persist(pending);
+    const order=await post<Order>(customer?'/api/account/orders':'/api/orders',payload,intent.key);
+    persist({...pending,order});onOrderSuccess(order);
+  });
+  const pay=()=>void run(async()=>{
+    if(!intent.order)return;
+    const paymentKey=intent.paymentKey && intent.method===method && attempt?.status!=='FAILED' ? intent.paymentKey : crypto.randomUUID();
+    persist({...intent,paymentKey,method});
+    const result=await post<Payment>(`/api/orders/${intent.order.id}/payment-session`,{method,...(method==='mobile_money'?{payer_phone:payer}:{})},paymentKey,intent.token);setAttempt(result);
+    if(result.checkout_url)window.location.assign(result.checkout_url);
+  });
+  const order=intent.order,paid=order?.payment_status==='SUCCESSFUL';
+  return <div className="fixed inset-0 z-50 bg-black/85 overflow-y-auto flex items-start justify-center p-4 py-12" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+    <div className="bg-[var(--tone-121212)] text-[var(--tone-f5f5f5)] border border-[var(--tone-2a2a2a)] w-full max-w-2xl p-6 sm:p-8 space-y-6">
+      <div className="flex justify-between items-center"><h2 id="checkout-title" className="text-2xl font-heading uppercase">{order?'Your order':'Checkout'}</h2><button disabled={busy} onClick={onClose} aria-label="Close checkout"><X/></button></div>
+      {!isBackendConfigured?<p>Checkout is temporarily unavailable. Your bag remains saved.</p>:<>
+        {error&&<p role="alert" className="border border-red-500/50 p-3 text-sm">{error}</p>}
+        {!customer&&!order&&<button onClick={onLogin} className="underline text-sm">Sign in to save orders to your account</button>}
+        {!order&&!quote&&<form onSubmit={review} className="grid sm:grid-cols-2 gap-4">
+          {([['customer_name','Full name'],['customer_email','Email'],['customer_phone','Phone / WhatsApp'],['delivery_district','District'],['delivery_sector','Sector / cell'],['delivery_street','Street / house / landmark']] as const).map(([key,label])=><label className="text-sm space-y-2" key={key}><span>{label}</span><input required type={key==='customer_email'?'email':'text'} value={details[key]} onChange={e=>setDetails({...details,[key]:e.target.value})} className="w-full border border-[var(--tone-333333)] bg-transparent p-3"/></label>)}
+          <label className="text-sm">Province<select className="w-full bg-[var(--tone-121212)] border border-[var(--tone-333333)] p-3 mt-2" value={details.delivery_province} onChange={e=>setDetails({...details,delivery_province:e.target.value})}>{['Kigali','Northern','Southern','Eastern','Western'].map(p=><option key={p}>{p}</option>)}</select></label>
+          <label className="text-sm">Delivery instructions (optional)<input className="w-full border border-[var(--tone-333333)] bg-transparent p-3 mt-2" value={details.delivery_notes} onChange={e=>setDetails({...details,delivery_notes:e.target.value})}/></label>
+          <button disabled={busy || (!cartItems.length&&!intent.payload)} className="monve-button sm:col-span-2">{busy?<Loader2 className="animate-spin"/>:intent.payload?'Recover submitted order':'Review current price & availability'}</button>
+        </form>}
+        {!order&&quote&&<div className="space-y-4"><h3 className="font-semibold">Review your order</h3>{quote.items.map((i,n)=><p key={n} className="text-sm">{i.product_name} · {i.size} · {i.color} × {i.quantity}<span className="float-right">{money(i.price*i.quantity)}</span></p>)}<p>Delivery <span className="float-right">{money(quote.delivery_fee)}</span></p><p className="text-lg font-semibold">Total <span className="float-right">{money(quote.total)}</span></p><p className="text-xs">Saving creates an unpaid order and temporarily reserves stock. You can pay on the next step.</p><button disabled={busy} className="monve-button" onClick={save}>Save order & continue <ArrowRight size={16}/></button><button disabled={busy} onClick={()=>{setQuote(null);persist(fresh());}} className="ml-4 underline">Edit details</button></div>}
+        {order&&<div className="space-y-4"><CheckCircle2 size={32}/><h3 className="text-xl">{paid?'Payment received':order.payment_status==='REFUNDED'?'Payment refunded':'Order saved — payment pending'}</h3><p>{order.order_number} · {money(order.total)}</p><p className="text-sm">Fulfillment: {order.status}. Payment: {order.payment_status}.</p>{order.review_required&&<p role="status">Your payment needs merchant review before dispatch. Please retain your order number.</p>}
+          {!paid&&order.payment_status!=='REFUNDED'&&order.status!=='CANCELLED'&&<>{methods.length?<><label className="block text-sm">Payment method<select value={method} onChange={e=>setMethod(e.target.value)} className="block w-full p-3 bg-[var(--tone-121212)] border border-[var(--tone-333333)] mt-2">{methods.map(m=><option key={m} value={m}>{m==='card'?'Card — secure Flutterwave checkout':'Rwanda mobile money'}</option>)}</select></label>{method==='mobile_money'&&<label className="block text-sm">Payer mobile number<input value={payer} onChange={e=>setPayer(e.target.value)} placeholder="+250788123456" className="block w-full bg-transparent border border-[var(--tone-333333)] p-3 mt-2"/></label>}<button disabled={busy} className="monve-button" onClick={pay}>{attempt?.status==='FAILED'?'Retry payment':'Continue payment'}</button></>:<p>Online payments are currently unavailable. This order is unpaid and will not be dispatched.</p>}{attempt&&<p role="status" className="text-sm">Payment attempt: {attempt.status}. {attempt.status==='UNKNOWN'?'The provider response was uncertain. Check status before retrying.':method==='mobile_money'?'Authorize the payment on the payer’s phone.':''}</p>}<button disabled={busy} className="underline text-sm" onClick={()=>void run(async()=>{const data=await post<{order:Order;attempts:Payment[]}>(`/api/orders/${order.id}/reconcile-payment`,{},undefined,intent.token);persist({...intent,order:data.order});setAttempt(data.attempts[0]||null);})}>Check payment status</button></>}
+          <p className="text-xs">Reserved until {order.reservation_expires_at ? new Date(order.reservation_expires_at).toLocaleString() : 'the displayed server deadline'}. This browser retains private access to your order.</p>{!customer&&<details><summary className="text-sm cursor-pointer">Show private order access token</summary><code className="text-xs break-all">{intent.token}</code></details>}
+          <div className="flex flex-wrap gap-4">{customer&&<button className="underline" onClick={onViewOrders}>View my orders</button>}<button className="underline" onClick={onClose}>Continue shopping</button><button className="underline" onClick={()=>{const history=readStored<Intent[]>('aurie_order_access',[]);store('aurie_order_access',[...history.filter(i=>i.order?.id!==order.id),intent]);persist(fresh());setQuote(null);setAttempt(null);}}>Start a new order</button></div>
+        </div>}
+      </>}
     </div>
-  );
+  </div>;
 };

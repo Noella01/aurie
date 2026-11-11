@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Heart, ShoppingBag, Shield, Check, Ruler, Truck, RotateCcw } from 'lucide-react';
 import { Product, ProductColor } from '../types';
+import { ProductImageGallery } from '../components/ProductImageGallery';
 import { ImagePlaceholder } from '../components/ImagePlaceholder';
 
 interface ProductDetailViewProps {
@@ -64,14 +65,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
         {/* Left: Product Gallery Placeholder (supports upload) */}
         <div className="space-y-4">
           <div className="bg-[var(--tone-151515)] border border-[var(--tone-262626)] p-4 sm:p-6 overflow-hidden">
-            <ImagePlaceholder
-              imageUrl={product.image_url}
-              alt={product.name}
-              category={product.category}
-              aspectRatio="portrait"
-              allowEdit={false}
-              className="w-full max-w-lg mx-auto"
-            />
+            <ProductImageGallery product={product} className="w-full max-w-lg mx-auto" />
           </div>
         </div>
 
@@ -278,7 +272,7 @@ export const ProductDetailView: React.FC<ProductDetailViewProps> = ({
           <div className="bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] max-w-lg w-full p-6 space-y-4 text-xs">
             <div className="flex justify-between items-center pb-2 border-b border-[var(--tone-222222)]">
               <h3 className="font-heading text-sm font-bold text-[var(--tone-ffffff)] uppercase tracking-wider">
-                AURIE Tailoring Size Guide
+                MONVÉ Tailoring Size Guide
               </h3>
               <button onClick={() => setShowSizeGuide(false)} className="text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)]">
                 ✕

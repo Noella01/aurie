@@ -1,6 +1,6 @@
 {
-  "name": "AURIE — Style With No Limits",
-  "description": "High-fashion e-commerce platform and store management dashboard for AURIE Rwanda, featuring unisex apparel, bespoke custom orders, Flutterwave payments, and real-time order tracking.",
+  "name": "MONVÉ — Art Of Elegance",
+  "description": "MONVÉ Rwanda storefront frontend with fashion collections, a local cart and wishlist, and Customs pages ready to connect to a replacement service.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

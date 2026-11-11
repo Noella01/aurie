@@ -69,7 +69,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 </div>
                 <p className="font-heading text-sm text-[var(--tone-d4d4d4)] mb-1">Your bag is empty</p>
                 <p className="text-xs text-[var(--tone-737373)] max-w-xs mb-6">
-                  Explore AURIE menswear, womenswear, and contemporary cultural collections.
+                  Explore Monvé menswear, womenswear, and contemporary cultural collections.
                 </p>
                 <button
                   onClick={onClose}
@@ -158,7 +158,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                 <span className="text-[var(--tone-e5e5e5)]">{formatCurrency(subtotal)}</span>
               </div>
               <div className="flex justify-between text-xs text-[var(--tone-a3a3a3)]">
-                <span>Kigali Delivery Fee</span>
+                <span>Estimated delivery fee</span>
                 <span className="text-[var(--tone-e5e5e5)]">
                   {deliveryFee === 0 ? (
                     <span className="text-emerald-400 font-medium">Complimentary</span>
@@ -176,7 +176,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               </div>
 
               <p className="text-[10px] text-[var(--tone-737373)] text-center">
-                Prices in Rwandan Francs (RWF) · Secure Flutterwave Payment
+                RWF estimate · Current price and delivery confirmed at checkout
               </p>
 
               <button

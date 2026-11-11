@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Package,
@@ -6,6 +6,7 @@ import {
   Scissors,
   Layers,
   CreditCard,
+  Mail,
   Settings,
   ArrowUpRight,
   Plus,
@@ -21,7 +22,6 @@ import {
   Phone,
   Eye,
   Menu,
-  Lock,
   Unlock,
   LogOut,
   ExternalLink
@@ -39,10 +39,18 @@ import {
   getFlutterwaveConfig,
   updateFlutterwaveConfig,
   subscribeToStoreEvents
+  ,adjustInventory, upsert
 } from '../services/api';
 import { ImagePlaceholder } from '../components/ImagePlaceholder';
+import { MonveMark } from '../components/MonveMark';
+import { PaymentsPanel } from '../components/PaymentsPanel';
+import { AdminEmailPanel } from '../components/AdminEmailPanel';
+import { PrivateImage } from '../components/PrivateImage';
+import { uploadImage } from '../services/checkout';
+import { apiFetch, isBackendConfigured } from '../services/http';
+import { productImages } from '../components/ProductImageGallery';
 
-type AdminTab = 'overview' | 'products' | 'orders' | 'custom' | 'inventory' | 'payments' | 'settings';
+type AdminTab = 'overview' | 'products' | 'orders' | 'custom' | 'inventory' | 'payments' | 'emails' | 'settings';
 
 interface AdminDashboardViewProps {
   currentTab?: AdminTab;
@@ -61,6 +69,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [passcode, setPasscode] = useState('');
+  const [adminEmail,setAdminEmail]=useState('');
   const [authError, setAuthError] = useState('');
 
   // Synchronize prop tab
@@ -81,6 +90,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [customRequests, setCustomRequests] = useState<CustomClothingRequest[]>([]);
   const [flwConfig, setFlwConfig] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [dataErrors,setDataErrors]=useState<string[]>([]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Product modal
@@ -96,7 +106,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    fetch('/api/admin/session')
+    if (!isBackendConfigured) { setAuthLoading(false); return; }
+    apiFetch('/api/admin/session')
       .then(res => res.ok ? res.json() : { authenticated: false })
       .then(data => setIsAuthenticated(data.authenticated === true))
       .catch(() => setIsAuthenticated(false))
@@ -107,10 +118,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
     e.preventDefault();
     setAuthError('');
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await apiFetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passcode }),
+        body: JSON.stringify({ password: passcode,...(adminEmail?{email:adminEmail}:{}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Sign-in failed.');
@@ -122,51 +133,52 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   const handleLogout = async () => {
-    await fetch('/api/admin/logout', { method: 'POST' }).catch(() => undefined);
-    setIsAuthenticated(false);
+    try {const response=await apiFetch('/api/admin/logout', { method: 'POST' });if(!response.ok)throw new Error('Logout failed. Retry to revoke the session.');setIsAuthenticated(false);setOrders([]);setCustomRequests([]);}catch(e){setDataErrors([(e as Error).message]);}
   };
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [prods, ords, reqs, cfg] = await Promise.all([
+      const results = await Promise.allSettled([
         getProducts(),
         getOrders(),
         getCustomRequests(),
         getFlutterwaveConfig(),
       ]);
-      setProducts(prods);
-      setOrders(ords);
-      setCustomRequests(reqs);
-      setFlwConfig(cfg);
+      const setters=[setProducts,setOrders,setCustomRequests,setFlwConfig];
+      const names=['Catalogue','Orders','Customs','Gateway'];
+      const errors:string[]=[];
+      results.forEach((result,index)=>{if(result.status==='fulfilled')(setters[index] as (value:any)=>void)(result.value);else errors.push(names[index]+': '+result.reason.message);});
+      setDataErrors(errors);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadData();
-    }
+    if (!isAuthenticated) return;
+    void loadData();
+    const refreshTimer=setInterval(()=>void loadData(),15000);
 
     // Listen to real-time events from server or customer actions
     const unsubOrder = subscribeToStoreEvents('order_created', (newOrder: Order) => {
-      setOrders((prev) => [newOrder, ...prev]);
+      setOrders((prev) => upsert(prev,newOrder));
     });
     const unsubOrderUpd = subscribeToStoreEvents('order_updated', (updOrder: Order) => {
-      setOrders((prev) => prev.map((o) => (o.id === updOrder.id ? updOrder : o)));
+      setOrders((prev) => upsert(prev,updOrder));
       if (viewingOrder?.id === updOrder.id) {
         setViewingOrder(updOrder);
       }
     });
     const unsubCustom = subscribeToStoreEvents('custom_request_created', (req: CustomClothingRequest) => {
-      setCustomRequests((prev) => [req, ...prev]);
+      setCustomRequests((prev) => upsert(prev,req));
     });
     const unsubCustomUpd = subscribeToStoreEvents('custom_request_updated', (updReq: CustomClothingRequest) => {
-      setCustomRequests((prev) => prev.map((r) => (r.id === updReq.id ? updReq : r)));
+      setCustomRequests((prev) => upsert(prev,updReq));
     });
 
     return () => {
+      clearInterval(refreshTimer);
       unsubOrder();
       unsubOrderUpd();
       unsubCustom();
@@ -203,14 +215,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   };
 
   const handleAdjustStock = async (product: Product, delta: number) => {
-    const newStock = Math.max(0, product.stock + delta);
     try {
-      await updateProduct(product.id, { stock: newStock });
-      setProducts((prev) =>
-        prev.map((p) => (p.id === product.id ? { ...p, stock: newStock } : p))
-      );
-    } catch {
-      alert('Failed to update stock');
+      const updated=await adjustInventory(product.id,delta);
+      setProducts(prev=>upsert(prev,updated));
+    } catch(error) {
+      alert((error as Error).message);
     }
   };
 
@@ -234,12 +243,22 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
   // Metrics
   const totalSales = orders
-    .filter((o) => o.payment_status === 'SUCCESSFUL')
+    .filter((o) => ['SUCCESSFUL','REFUNDED'].includes(o.payment_status) && o.environment===(flwConfig?.is_test_mode===false?'live':'test'))
     .reduce((sum, o) => sum + o.total, 0);
   const pendingOrdersCount = orders.filter((o) => o.status === 'PENDING' || o.status === 'CONFIRMED').length;
   const inProductionCustomCount = customRequests.filter((r) => r.status !== 'COMPLETED' && r.status !== 'CANCELLED').length;
   const lowStockProducts = products.filter((p) => p.stock < 10);
 
+  if (!isBackendConfigured) return (
+    <div className="min-h-screen bg-[var(--tone-070707)] text-[var(--tone-f5f5f5)] flex items-center justify-center p-6">
+      <section className="max-w-md border border-[var(--tone-2a2a2a)] p-8 space-y-5">
+        <div className="flex items-center gap-3"><MonveMark className="w-16 h-auto" /><p className="text-xs uppercase tracking-widest">Admin</p></div>
+        <h1 className="text-2xl font-semibold">Admin access is temporarily unavailable.</h1>
+        <p className="text-sm text-[var(--tone-a3a3a3)]">Store management will be available once the new service is connected.</p>
+        <button className="monve-button" onClick={onSwitchToCustomer}>Back to storefront</button>
+      </section>
+    </div>
+  );
   if (authLoading) return <div className="min-h-screen bg-[var(--tone-070707)]" />;
 
   if (!isAuthenticated) {
@@ -249,12 +268,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
         <div className="w-full max-w-md bg-[var(--tone-121212)] border border-[var(--tone-2a2a2a)] p-8 shadow-2xl relative z-10 space-y-6">
           <div className="text-center space-y-2">
-            <div className="w-12 h-12 rounded-full border border-amber-500/40 bg-amber-950/20 text-amber-400 flex items-center justify-center mx-auto mb-2">
-              <Lock size={22} />
-            </div>
-            <span className="font-heading text-xl font-bold tracking-[0.2em] text-[var(--tone-ffffff)] block">
-              AURIE
-            </span>
+            <MonveMark className="w-24 h-auto mx-auto mb-2" />
             <span className="text-[10px] tracking-[0.3em] uppercase text-amber-400 font-semibold block">
               Store Admin Portal
             </span>
@@ -267,6 +281,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
+            <label className="block text-xs">Admin email (optional with one administrator)<input type="email" autoComplete="username" className="block w-full bg-transparent border border-[var(--tone-333333)] px-3 py-2 mt-2" value={adminEmail} onChange={e=>setAdminEmail(e.target.value)}/></label>
             <div>
               <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1.5 font-semibold">
                 Admin Password
@@ -318,16 +333,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
         <div>
           {/* Top Brand Tag */}
           <div className="p-5 border-b border-[var(--tone-222222)] flex items-center justify-between">
-            <div>
-              <span className="font-heading text-lg font-bold tracking-[0.2em] text-[var(--tone-ffffff)]">
-                AURIE
-              </span>
-              <span className="block text-[9px] uppercase tracking-[0.3em] text-amber-400 font-semibold">
-                Store Management
-              </span>
-              <span className="block text-[9px] font-mono text-[var(--tone-737373)] mt-0.5">
-                /admin
-              </span>
+            <div className="flex items-center gap-3">
+              <MonveMark className="w-16 h-auto shrink-0" />
+              <div>
+                <span className="block text-[9px] uppercase tracking-[0.3em] text-amber-400 font-semibold">
+                  Store Management
+                </span>
+                <span className="block text-[9px] font-mono text-[var(--tone-737373)] mt-0.5">
+                  /admin
+                </span>
+              </div>
             </div>
 
             <button
@@ -414,7 +429,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
             >
               <div className="flex items-center gap-3">
                 <Scissors size={16} />
-                <span>Custom Tailoring</span>
+                <span>Customs</span>
               </div>
               {inProductionCustomCount > 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500 text-[var(--tone-ffffff)] font-bold">
@@ -459,6 +474,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
               <CreditCard size={16} />
               <span>Flutterwave & MoMo</span>
             </button>
+
+            <button
+              onClick={() => {
+                handleTabSelect('emails');
+                setMobileNavOpen(false);
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded transition-colors ${
+                activeTab === 'emails'
+                  ? 'bg-[var(--tone-ffffff)] text-[var(--tone-000000)] font-bold'
+                  : 'text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] hover:bg-[var(--tone-1a1a1a)]'
+              }`}
+            >
+              <Mail size={16} />
+              <span>Email customers</span>
+            </button>
           </nav>
         </div>
 
@@ -484,22 +514,24 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
       {/* Main Admin Content Area */}
       <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {dataErrors.map(message=><p key={message} role="alert" className="mb-3 text-sm text-red-300">{message} Previously loaded data may be stale.</p>)}
         {/* Top bar info */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-[var(--tone-222222)] mb-8 gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="text-[10px] uppercase tracking-widest text-emerald-400 font-semibold">
-                Live Store Engine Active
+                {loading?'Refreshing store data':'Store data refreshes every 15 seconds'}
               </span>
             </div>
             <h1 className="font-heading text-2xl sm:text-3xl font-bold text-[var(--tone-ffffff)] mt-1 uppercase tracking-wide">
               {activeTab === 'overview' && 'STORE OVERVIEW'}
               {activeTab === 'products' && 'GARMENT CATALOG'}
               {activeTab === 'orders' && 'CUSTOMER ORDERS & DISPATCH'}
-              {activeTab === 'custom' && 'BESPOKE TAILORING PIPELINE'}
+              {activeTab === 'custom' && 'CUSTOMS'}
               {activeTab === 'inventory' && 'INVENTORY & ATELIER STOCK'}
               {activeTab === 'payments' && 'FLUTTERWAVE GATEWAY SETTINGS'}
+              {activeTab === 'emails' && 'CUSTOMER EMAIL'}
             </h1>
           </div>
 
@@ -541,7 +573,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   {formatCurrency(totalSales)}
                 </div>
                 <span className="text-[10px] text-emerald-400 mt-1 block">
-                  ✓ Verified via Flutterwave Gateway
+                  Gross verified paid totals including delivery · {flwConfig?.is_test_mode===false?'Live':'Test'}
                 </span>
               </div>
 
@@ -565,7 +597,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   {inProductionCustomCount}
                 </div>
                 <span className="text-[10px] text-[var(--tone-a3a3a3)] mt-1 block">
-                  Custom ceremonial tailoring
+                  Custom clothing requests
                 </span>
               </div>
 
@@ -705,6 +737,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                   className="w-full bg-[var(--tone-1f1f1f)] border border-[var(--tone-2f2f2f)] pl-9 pr-3 py-1.5 text-xs text-[var(--tone-ffffff)] rounded focus:outline-none focus:border-[var(--tone-ffffff)]"
                 />
               </div>
+
+              <button type="button" onClick={() => handleTabSelect('custom')} className="w-full sm:w-auto border border-[var(--tone-333333)] px-3 py-2 text-[10px] uppercase tracking-wider hover:bg-[var(--tone-1c1c1c)]">
+                Custom requests ({customRequests.length})
+              </button>
             </div>
 
             {/* Products Table */}
@@ -739,9 +775,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                               aspectRatio="portrait"
                               allowEdit={true}
                               onImageChange={async (newUrl) => {
-                                await updateProduct(p.id, { image_url: newUrl });
+                                const image_urls = [newUrl, ...productImages(p).filter(url => url !== newUrl)].slice(0, 7);
+                                await updateProduct(p.id, { image_url: newUrl, image_urls });
                                 setProducts((prev) =>
-                                  prev.map((item) => (item.id === p.id ? { ...item, image_url: newUrl } : item))
+                                  prev.map((item) => (item.id === p.id ? { ...item, image_url: newUrl, image_urls } : item))
                                 );
                               }}
                             />
@@ -770,7 +807,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                         <td className="py-3 px-3">
                           <span
                             className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                              p.stock > 10
+                              p.stock >= 10
                                 ? 'text-emerald-400 bg-emerald-950/40'
                                 : p.stock > 0
                                 ? 'text-amber-400 bg-amber-950/40'
@@ -867,18 +904,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                           {formatCurrency(ord.total)}
                         </td>
                         <td className="py-3.5 px-3">
-                          <select
-                            value={ord.payment_status}
-                            onChange={(e) =>
-                              handleUpdatePaymentStatus(ord.id, e.target.value as PaymentStatus)
-                            }
-                            className="bg-[var(--tone-202020)] border border-[var(--tone-333333)] text-[10px] uppercase font-bold px-2 py-1 text-[var(--tone-ffffff)] rounded"
-                          >
-                            <option value="SUCCESSFUL">SUCCESSFUL</option>
-                            <option value="PENDING">PENDING</option>
-                            <option value="FAILED">FAILED</option>
-                            <option value="REFUNDED">REFUNDED</option>
-                          </select>
+                          <span className="text-xs font-semibold">{ord.payment_status}{ord.review_required?' · REVIEW REQUIRED':''}</span>
                         </td>
                         <td className="py-3.5 px-3">
                           <select
@@ -917,14 +943,18 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           <div className="space-y-6 animate-fade-in">
             <div className="bg-[var(--tone-141414)] border border-[var(--tone-242424)] p-6">
               <h3 className="font-heading text-base font-bold text-[var(--tone-ffffff)] uppercase tracking-wider mb-1">
-                Bespoke Tailoring Requests ({customRequests.length})
+                Customs Requests ({customRequests.length})
               </h3>
               <p className="text-xs text-[var(--tone-a3a3a3)]">
-                Track client measurements, wedding/event occasions, and manage the tailoring stages from NEW to COMPLETED.
+                Review customers’ clothing ideas, measurements and reference images, and manage each request from NEW to COMPLETED.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {customRequests.length === 0 ? <div className="border border-dashed border-[var(--tone-333333)] px-6 py-14 text-center">
+              <Scissors size={24} className="mx-auto mb-3 text-[var(--tone-a3a3a3)]" />
+              <h4 className="font-heading text-lg text-[var(--tone-ffffff)]">No Customs requests yet</h4>
+              <p className="mt-2 text-xs text-[var(--tone-a3a3a3)]">Customer portal submissions will appear here automatically.</p>
+            </div> : <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {customRequests.map((req) => (
                 <div key={req.id} className="bg-[var(--tone-141414)] border border-[var(--tone-242424)] p-5 space-y-4">
                   <div className="flex justify-between items-start border-b border-[var(--tone-222222)] pb-3">
@@ -984,16 +1014,24 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       </p>
                     </div>
 
+                    {req.media_id && (
+                      <div>
+                        <span className="text-[var(--tone-737373)] block text-[10px] uppercase mb-2">Reference image:</span>
+                        <PrivateImage id={req.media_id} alt={`Design inspiration for ${req.clothing_type}`} />
+                      </div>
+                    )}
+
                     {req.notes && (
                       <div className="pt-2 border-t border-[var(--tone-1c1c1c)]">
                         <span className="text-amber-400 font-semibold block text-[10px] uppercase">Tailor Note:</span>
                         <span className="text-[var(--tone-d4d4d4)] text-xs">{req.notes}</span>
                       </div>
                     )}
+                    <CustomNotes request={req} onSave={notes=>handleUpdateCustomStatus(req.id,req.status,notes)} />
                   </div>
                 </div>
               ))}
-            </div>
+            </div>}
           </div>
         )}
 
@@ -1032,7 +1070,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                       <span className="text-[10px] uppercase text-[var(--tone-737373)] block">Available</span>
                       <span
                         className={`text-sm font-bold ${
-                          p.stock > 10 ? 'text-[var(--tone-ffffff)]' : 'text-red-400'
+                          p.stock >= 10 ? 'text-[var(--tone-ffffff)]' : 'text-red-400'
                         }`}
                       >
                         {p.stock} units
@@ -1042,18 +1080,21 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
                     <div className="flex items-center gap-1.5 bg-[var(--tone-1c1c1c)] border border-[var(--tone-2a2a2a)] p-1 rounded">
                       <button
                         onClick={() => handleAdjustStock(p, -1)}
+                        aria-label={`Remove 1 unit from ${p.name}`}
                         className="px-2 py-0.5 text-xs text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] hover:bg-[var(--tone-252525)]"
                       >
                         -
                       </button>
                       <button
                         onClick={() => handleAdjustStock(p, 1)}
+                        aria-label={`Add 1 unit to ${p.name}`}
                         className="px-2 py-0.5 text-xs text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] hover:bg-[var(--tone-252525)]"
                       >
                         +
                       </button>
                       <button
                         onClick={() => handleAdjustStock(p, 5)}
+                        aria-label={`Add 5 units to ${p.name}`}
                         className="px-2 py-0.5 text-[10px] text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)] hover:bg-[var(--tone-252525)]"
                       >
                         +5
@@ -1066,108 +1107,8 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </div>
         )}
 
-        {/* 6. FLUTTERWAVE PAYMENTS TAB */}
-        {activeTab === 'payments' && (
-          <div className="max-w-3xl space-y-6 animate-fade-in">
-            <div className="bg-[var(--tone-141414)] border border-[var(--tone-242424)] p-6 space-y-4">
-              <div className="flex items-center gap-3">
-                <CreditCard size={20} className="text-amber-400" />
-                <div>
-                  <h3 className="font-heading text-base font-bold text-[var(--tone-ffffff)] uppercase tracking-wider">
-                    Flutterwave Gateway Integration (Rwanda RWF)
-                  </h3>
-                  <p className="text-xs text-[var(--tone-a3a3a3)] mt-0.5">
-                    Configured for Rwanda Mobile Money (MTN MoMo, Airtel Money) and Card transactions in RWF.
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-4 bg-[var(--tone-181818)] border border-[var(--tone-262626)] space-y-4 text-xs">
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Flutterwave Public Key
-                  </label>
-                  <input
-                    type="text"
-                    value={flwConfig?.public_key || ''}
-                    onChange={(e) =>
-                      setFlwConfig({ ...flwConfig, public_key: e.target.value })
-                    }
-                    className="w-full bg-[var(--tone-0d0d0d)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2 text-[var(--tone-ffffff)] font-mono rounded"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Environment Mode
-                  </label>
-                  <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer text-[var(--tone-ffffff)]">
-                      <input
-                        type="checkbox"
-                        checked={flwConfig?.is_test_mode ?? true}
-                        onChange={(e) =>
-                          setFlwConfig({ ...flwConfig, is_test_mode: e.target.checked })
-                        }
-                        className="accent-white"
-                      />
-                      <span>Sandbox / Test Mode Active (Recommended for verification)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                    Merchant Name
-                  </label>
-                  <input
-                    type="text"
-                    value={flwConfig?.merchant_name || 'AURIE Rwanda'}
-                    onChange={(e) =>
-                      setFlwConfig({ ...flwConfig, merchant_name: e.target.value })
-                    }
-                    className="w-full bg-[var(--tone-0d0d0d)] border border-[var(--tone-2b2b2b)] text-xs px-3 py-2 text-[var(--tone-ffffff)] rounded"
-                  />
-                </div>
-
-                <button
-                  onClick={async () => {
-                    await updateFlutterwaveConfig(flwConfig);
-                    alert('Flutterwave configurations saved successfully.');
-                  }}
-                  className="bg-[var(--tone-ffffff)] hover:bg-[var(--tone-e5e5e5)] text-[var(--tone-000000)] px-6 py-2 text-xs font-bold uppercase tracking-wider transition-colors"
-                >
-                  Save Gateway Settings
-                </button>
-              </div>
-
-              {/* Transaction Logs */}
-              <div className="pt-4 border-t border-[var(--tone-222222)]">
-                <h4 className="text-xs uppercase tracking-wider text-[var(--tone-d4d4d4)] font-semibold mb-3">
-                  Recent Verified Flutterwave Transactions
-                </h4>
-                <div className="space-y-2">
-                  {orders.map((o) => (
-                    <div
-                      key={o.id}
-                      className="p-3 bg-[var(--tone-181818)] border border-[var(--tone-262626)] flex items-center justify-between text-xs font-mono"
-                    >
-                      <div>
-                        <span className="text-[var(--tone-ffffff)] font-bold">#{o.order_number}</span> ·{' '}
-                        <span className="text-[var(--tone-a3a3a3)]">{o.customer_name}</span>
-                        <div className="text-[10px] text-[var(--tone-737373)]">Ref: {o.transaction_reference}</div>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-emerald-400 font-bold">{formatCurrency(o.total)}</span>
-                        <div className="text-[10px] text-[var(--tone-a3a3a3)] uppercase">{o.payment_method}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {['payments','settings'].includes(activeTab) && <PaymentsPanel />}
+        {activeTab === 'emails' && <AdminEmailPanel />}
       </main>
 
       {/* Product Add / Edit Modal */}
@@ -1177,13 +1118,11 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           onClose={() => setIsProductModalOpen(false)}
           onSave={async (saved) => {
             if (editingProduct) {
-              await updateProduct(editingProduct.id, saved);
-              setProducts((prev) =>
-                prev.map((p) => (p.id === editingProduct.id ? { ...p, ...saved } : p))
-              );
+              const updated=await updateProduct(editingProduct.id,{...saved,version:editingProduct.version});
+              setProducts(prev=>upsert(prev,updated));
             } else {
               const created = await createProduct(saved);
-              setProducts((prev) => [created, ...prev]);
+              setProducts((prev) => upsert(prev,created));
             }
             setIsProductModalOpen(false);
           }}
@@ -1202,7 +1141,19 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
   );
 };
 
+function CustomNotes({request,onSave}:{request:CustomClothingRequest;onSave:(notes:string)=>Promise<void>}){
+  const [notes,setNotes]=useState(request.notes || ''),[busy,setBusy]=useState(false);
+  return <div className="space-y-2 text-xs"><label>Customer-visible tailor note<textarea className="block w-full bg-transparent border border-[var(--tone-333333)] p-2 mt-1" value={notes} onChange={e=>setNotes(e.target.value)} maxLength={4000}/></label><button disabled={busy} className="underline" onClick={async()=>{setBusy(true);try{await onSave(notes);}finally{setBusy(false);}}}>Save tailor note</button></div>;
+}
+
 // Sub-component: Product Edit Modal
+type ProductImageDraft = {
+  id: string;
+  url: string;
+  previewUrl: string;
+  status: 'uploading' | 'uploaded' | 'failed';
+};
+
 function ProductEditModal({
   product,
   onClose,
@@ -1216,43 +1167,130 @@ function ProductEditModal({
   const [tagline, setTagline] = useState(product?.tagline || '');
   const [category, setCategory] = useState<CategoryType>(product?.category || 'Men');
   const [subcategory, setSubcategory] = useState(product?.subcategory || 'Jackets');
-  const [price, setPrice] = useState(product?.price || 85000);
-  const [stock, setStock] = useState(product?.stock || 15);
+  const [price, setPrice] = useState(product?.price ?? 85000);
+  const [stock, setStock] = useState(product?.stock ?? 15);
+  const [gender,setGender]=useState<Product['gender']>(product?.gender || (category === 'Women' ? 'women' : category === 'Unisex' || category === 'Culture' ? 'unisex' : 'men'));
+  const [colors,setColors]=useState((product?.colors || [{name:'Obsidian Black',hex:'#0D0D0D'},{name:'Pure Chalk',hex:'#F0F0F0'}]).map(c=>c.name+' | '+c.hex).join('\n'));
   const [sku, setSku] = useState(product?.sku || `LEN-${category[0]}-${Date.now().toString().slice(-4)}`);
   const [description, setDescription] = useState(product?.description || '');
   const [materials, setMaterials] = useState(product?.materials || '');
   const [sizesInput, setSizesInput] = useState(product?.sizes.join(', ') || 'S, M, L, XL');
-  const [imageUrl, setImageUrl] = useState(product?.image_url || '');
+  const [imageEntries, setImageEntries] = useState<ProductImageDraft[]>(() => product
+    ? productImages(product).map((url, index) => ({ id: `existing-${index}-${url}`, url, previewUrl: url, status: 'uploaded' as const }))
+    : []);
+  const imageEntriesRef = useRef(imageEntries);
+  const [imageUrlInput, setImageUrlInput] = useState('');
   const [isFeatured, setIsFeatured] = useState(product?.is_featured ?? true);
   const [isNewArrival, setIsNewArrival] = useState(product?.is_new_arrival ?? true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => { imageEntriesRef.current = imageEntries; }, [imageEntries]);
+  useEffect(() => () => {
+    imageEntriesRef.current.forEach(image => {
+      if (image.previewUrl.startsWith('blob:')) URL.revokeObjectURL(image.previewUrl);
+    });
+  }, []);
+
+  const handleImageFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.currentTarget.files || []);
+    event.currentTarget.value = '';
+    if (!files.length) return;
+    if (imageEntries.length + files.length > 7) {
+      setSaveError(`This piece can have up to 7 images. There is room for ${7 - imageEntries.length} more.`);
+      return;
+    }
+    if (files.some(file => !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024)) {
+      setSaveError('Choose JPEG, PNG or WebP images up to 5 MB each.');
+      return;
+    }
+
     setSaving(true);
     setSaveError('');
+    const drafts = files.map(file => ({
+      file,
+      image: { id: crypto.randomUUID(), url: '', previewUrl: URL.createObjectURL(file), status: 'uploading' as const }
+    }));
+    setImageEntries(previous => [...previous, ...drafts.map(draft => draft.image)]);
+    const uploadErrors: string[] = [];
     try {
-      const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
+      for (const draft of drafts) {
+        try {
+          const uploaded = await uploadImage(draft.file, 'product');
+          setImageEntries(previous => previous.map(image => image.id === draft.image.id
+            ? { ...image, url: uploaded.url, previewUrl: uploaded.url, status: 'uploaded' }
+            : image));
+          URL.revokeObjectURL(draft.image.previewUrl);
+        } catch (error) {
+          uploadErrors.push((error as Error).message || 'An image could not be uploaded.');
+          setImageEntries(previous => previous.map(image => image.id === draft.image.id ? { ...image, status: 'failed' } : image));
+        }
+      }
+      if (uploadErrors.length) setSaveError(`The photo preview is shown, but upload failed: ${uploadErrors[0]} Remove it or retry after reconnecting the product service.`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addImageUrl = () => {
+    const url = imageUrlInput.trim();
+    if (!url) return;
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
+    } catch {
+      setSaveError('Enter a valid HTTP or HTTPS image URL.');
+      return;
+    }
+    if (imageEntries.length >= 7) {
+      setSaveError('This piece can have no more than 7 images.');
+      return;
+    }
+    if (imageEntries.some(image => image.url === url)) return;
+    setImageEntries(previous => [...previous, { id: crypto.randomUUID(), url, previewUrl: url, status: 'uploaded' }]);
+    setImageUrlInput('');
+    setSaveError('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveError('');
+    const sizes = sizesInput.split(',').map(s => s.trim()).filter(Boolean);
+    const parsedColors = colors.split('\n').filter(Boolean).map(line => {
+      const [colorName, hex] = line.split('|').map(value => value.trim());
+      return { name: colorName || '', hex: hex || '' };
+    });
+    if (!name.trim()) return setSaveError('Add a garment name before saving.');
+    if (!sku.trim()) return setSaveError('Add a SKU before saving.');
+    if (!subcategory.trim()) return setSaveError('Add a subcategory before saving.');
+    if (!Number.isFinite(Number(price)) || Number(price) < 0) return setSaveError('Enter a valid price in RWF.');
+    if (!Number.isInteger(Number(stock)) || Number(stock) < 0) return setSaveError('Enter stock as a whole number of zero or more.');
+    if (!sizes.length) return setSaveError('Add at least one size or fit option.');
+    if (!parsedColors.length || parsedColors.some(color => !color.name || !/^#[0-9a-fA-F]{6}$/.test(color.hex))) {
+      return setSaveError('Add at least one color using a name and six-digit hex value, like Obsidian Black | #0D0D0D.');
+    }
+    if (imageEntries.some(image => image.status === 'uploading')) return setSaveError('Wait for the selected photos to finish uploading.');
+    if (imageEntries.some(image => image.status === 'failed')) return setSaveError('Remove any photo whose upload failed, then try adding it again.');
+
+    setSaving(true);
+    try {
       await onSave({
-        name,
+        name: name.trim(),
         tagline,
         category: category === 'All' ? 'Men' : category,
         subcategory,
         price: Number(price),
         stock: Number(stock),
-        sku,
+        sku: sku.trim(),
         description,
         materials,
         sizes,
-        image_url: imageUrl,
+        image_url: imageEntries[0]?.url || '',
+        image_urls: imageEntries.map(image => image.url).slice(0, 7),
         is_featured: isFeatured,
         is_new_arrival: isNewArrival,
-        colors: product?.colors || [
-          { name: 'Obsidian Black', hex: '#0D0D0D' },
-          { name: 'Pure Chalk', hex: '#F0F0F0' }
-        ],
-        gender: category === 'Men' ? 'men' : category === 'Women' ? 'women' : 'unisex'
+        colors: parsedColors,
+        gender
       });
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Could not save garment.');
@@ -1262,8 +1300,8 @@ function ProductEditModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[var(--tone-121212)] border border-[var(--tone-2b2b2b)] w-full max-w-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative text-[var(--tone-f5f5f5)] animate-fade-in">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/85 backdrop-blur-md p-4">
+      <div className="mx-auto my-0 sm:my-4 bg-[var(--tone-121212)] border border-[var(--tone-2b2b2b)] w-full max-w-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative text-[var(--tone-f5f5f5)] animate-fade-in">
         <div className="flex justify-between items-center border-b border-[var(--tone-222222)] pb-4">
           <h3 className="font-heading text-lg font-bold text-[var(--tone-ffffff)] uppercase tracking-wider">
             {product ? 'Edit Garment' : 'Create New Garment'}
@@ -1273,8 +1311,47 @@ function ProductEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} noValidate className="space-y-4 text-xs">
           {saveError && <p role="alert" className="text-red-300">{saveError}</p>}
+          <label className="block">Tagline<input className="block w-full bg-transparent border border-[var(--tone-333333)] p-2" value={tagline} onChange={e=>setTagline(e.target.value)}/></label>
+          <label className="block">Gender<select className="block w-full bg-[var(--tone-181818)] border border-[var(--tone-333333)] p-2" value={gender} onChange={e=>setGender(e.target.value as Product['gender'])}>{['men','women','unisex'].map(g=><option key={g}>{g}</option>)}</select></label>
+          <label className="block">Colors: one name | #hex per line<textarea className="block w-full bg-transparent border border-[var(--tone-333333)] p-2" value={colors} onChange={e=>setColors(e.target.value)} rows={3}/></label>
+          <div className="flex gap-5"><label><input type="checkbox" checked={isFeatured} onChange={e=>setIsFeatured(e.target.checked)}/> Featured</label><label><input type="checkbox" checked={isNewArrival} onChange={e=>setIsNewArrival(e.target.checked)}/> New arrival</label></div>
+          <section className="space-y-3 rounded border border-[var(--tone-333333)] p-3 sm:col-span-2" aria-labelledby="product-image-heading">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h4 id="product-image-heading" className="font-semibold uppercase tracking-wider">Piece images <span className="text-[var(--tone-a3a3a3)]">({imageEntries.length}/7)</span></h4>
+              <p className="text-[10px] text-[var(--tone-a3a3a3)]">First image is the cover. Customers can swipe through the rest.</p>
+            </div>
+            {imageEntries.length > 0 && <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {imageEntries.map((image, index) => <figure key={image.id} className="relative overflow-hidden border border-[var(--tone-333333)]">
+                <img src={image.previewUrl} alt={`${name || 'Piece'} photo ${index + 1}`} className="aspect-[3/4] w-full object-cover" />
+                {image.status !== 'uploaded' && <span className={`absolute left-1 top-1 bg-black/80 px-1.5 py-1 text-[9px] ${image.status === 'failed' ? 'text-red-300' : 'text-white'}`}>
+                  {image.status === 'uploading' ? 'Uploading…' : 'Upload failed'}
+                </span>}
+                <figcaption className="flex items-center justify-between gap-1 p-1.5 text-[9px]">
+                  <span>{index === 0 ? 'Cover image' : `Image ${index + 1}`}</span>
+                  <div className="flex items-center gap-2">
+                    {index > 0 && <button type="button" className="underline" disabled={saving} onClick={() => setImageEntries(previous => [image, ...previous.filter(item => item.id !== image.id)])}>Set cover</button>}
+                    <button type="button" aria-label={`Remove image ${index + 1}`} className="text-red-300" disabled={saving} onClick={() => {
+                      if (image.previewUrl.startsWith('blob:')) URL.revokeObjectURL(image.previewUrl);
+                      setImageEntries(previous => previous.filter(item => item.id !== image.id));
+                    }}>Remove</button>
+                  </div>
+                </figcaption>
+              </figure>)}
+            </div>}
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 border border-[var(--tone-333333)] px-3 py-2 text-[10px] uppercase tracking-wider hover:bg-[var(--tone-1c1c1c)]">
+                Add photos
+                <input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={saving || imageEntries.length >= 7} onChange={handleImageFiles} className="sr-only" />
+              </label>
+              <span className="text-[10px] text-[var(--tone-a3a3a3)]">JPEG, PNG or WebP · up to 5 MB each</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input type="url" value={imageUrlInput} onChange={event => setImageUrlInput(event.target.value)} placeholder="Or paste an image URL" className="min-w-0 flex-1 bg-transparent border border-[var(--tone-333333)] px-3 py-2" />
+              <button type="button" onClick={addImageUrl} disabled={saving || imageEntries.length >= 7} className="border border-[var(--tone-333333)] px-3 py-2 text-[10px] uppercase tracking-wider disabled:opacity-50">Add URL</button>
+            </div>
+          </section>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
@@ -1309,7 +1386,14 @@ function ProductEditModal({
               </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as CategoryType)}
+                onChange={(e) => {
+                  const selected = e.target.value as CategoryType;
+                  setCategory(selected);
+                  if (selected === 'Men') setGender('men');
+                  else if (selected === 'Women') setGender('women');
+                  else if (selected === 'Unisex') setGender('unisex');
+                  else if (selected === 'Culture' && !product) setGender('unisex');
+                }}
                 className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2e2e2e)] px-3 py-2 text-[var(--tone-ffffff)] rounded"
               >
                 <option value="Men">Men</option>
@@ -1369,19 +1453,6 @@ function ProductEditModal({
                 value={sizesInput}
                 onChange={(e) => setSizesInput(e.target.value)}
                 placeholder="e.g. S, M, L, XL, XXL"
-                className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2e2e2e)] px-3 py-2 text-[var(--tone-ffffff)] rounded"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block uppercase tracking-wider text-[var(--tone-a3a3a3)] mb-1">
-                Image Link or Upload (Leave empty to keep minimalist placeholder ready for user)
-              </label>
-              <input
-                type="text"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://... or upload below"
                 className="w-full bg-[var(--tone-181818)] border border-[var(--tone-2e2e2e)] px-3 py-2 text-[var(--tone-ffffff)] rounded"
               />
             </div>
@@ -1452,8 +1523,8 @@ function OrderDetailModal({
     }).format(val);
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[var(--tone-121212)] border border-[var(--tone-2b2b2b)] w-full max-w-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative text-[var(--tone-f5f5f5)] animate-fade-in">
+    <div className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-black/85 backdrop-blur-md p-4">
+      <div className="mx-auto my-0 sm:my-4 bg-[var(--tone-121212)] border border-[var(--tone-2b2b2b)] w-full max-w-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative text-[var(--tone-f5f5f5)] animate-fade-in">
         <div className="flex justify-between items-start border-b border-[var(--tone-222222)] pb-4">
           <div>
             <span className="text-[10px] uppercase tracking-widest text-[var(--tone-a3a3a3)]">Order Management</span>

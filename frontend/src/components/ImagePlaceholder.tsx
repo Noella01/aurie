@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Camera, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { uploadImage } from '../services/checkout';
 
 interface ImagePlaceholderProps {
   imageUrl?: string;
@@ -8,7 +9,7 @@ interface ImagePlaceholderProps {
   aspectRatio?: 'portrait' | 'square' | 'wide';
   className?: string;
   allowEdit?: boolean;
-  onImageChange?: (newUrl: string) => void;
+  onImageChange?: (newUrl: string) => void | Promise<void>;
 }
 
 export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
@@ -22,6 +23,15 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [inputUrl, setInputUrl] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const displayedImage = previewUrl || imageUrl;
+
+  useEffect(() => {
+    if (!previewUrl.startsWith('blob:')) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   const aspectClasses = {
     portrait: 'aspect-[3/4]',
@@ -29,36 +39,46 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
     wide: 'aspect-[16/9]'
   }[aspectRatio];
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
     const file = e.target.files?.[0];
+    input.value = '';
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          onImageChange?.(reader.result);
-          setIsEditing(false);
-        }
-      };
-      reader.readAsDataURL(file);
+      if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024){setUploadError('Choose a JPEG, PNG or WebP image up to 5 MB.');return;}
+      setPreviewUrl(URL.createObjectURL(file));
+      setUploading(true);
+      setUploadError('');
+      try {
+        const uploaded=await uploadImage(file,'product');
+        await onImageChange?.(uploaded.url);
+        setPreviewUrl('');
+        setIsEditing(false);
+      }catch(error){setUploadError((error as Error).message || 'The image could not be saved.');}
+      finally{setUploading(false);}
     }
   };
 
-  const handleSaveUrl = () => {
+  const handleSaveUrl = async () => {
     if (inputUrl.trim()) {
-      onImageChange?.(inputUrl.trim());
-      setInputUrl('');
-      setIsEditing(false);
+      setUploading(true);
+      setUploadError('');
+      try {await onImageChange?.(inputUrl.trim());setInputUrl('');setPreviewUrl('');setIsEditing(false);}
+      catch(error){setUploadError((error as Error).message || 'The image link could not be saved.');}
+      finally{setUploading(false);}
     }
   };
 
-  if (imageUrl) {
+  if (displayedImage) {
     return (
       <div className={`relative group overflow-hidden bg-[var(--tone-151515)] ${aspectClasses} ${className}`}>
         <img
-          src={imageUrl}
+          src={displayedImage}
           alt={alt}
           className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
         />
+        {(uploading || uploadError) && <div role="status" className={`absolute inset-x-0 top-0 bg-black/80 px-2 py-1 text-center text-[10px] ${uploadError ? 'text-red-300' : 'text-white'}`}>
+          {uploading ? 'Saving image…' : `Preview only · ${uploadError}`}
+        </div>}
         {allowEdit && onImageChange && (
           <button
             onClick={() => setIsEditing(true)}
@@ -73,6 +93,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
         {isEditing && (
           <div className="absolute inset-0 bg-[var(--tone-000000)]/90 p-4 flex flex-col justify-center items-center z-20 backdrop-blur-sm animate-fade-in">
             <button
+              type="button"
               onClick={() => setIsEditing(false)}
               className="absolute top-2 right-2 text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)]"
             >
@@ -88,7 +109,9 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
             />
             <div className="flex gap-2 w-full">
               <button
+                type="button"
                 onClick={handleSaveUrl}
+                disabled={uploading}
                 className="flex-1 bg-[var(--tone-ffffff)] text-[var(--tone-000000)] text-xs font-semibold py-1.5 rounded hover:bg-[var(--tone-e5e5e5)]"
               >
                 Save URL
@@ -96,7 +119,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
               <label className="flex-1 cursor-pointer bg-[var(--tone-2a2a2a)] text-[var(--tone-ffffff)] text-xs font-medium py-1.5 rounded text-center hover:bg-[var(--tone-404040)] flex items-center justify-center gap-1">
                 <Upload size={12} />
                 <span>Upload</span>
-                <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={handleFileUpload} className="hidden" />
               </label>
             </div>
           </div>
@@ -143,6 +166,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
       {isEditing && (
         <div className="absolute inset-0 bg-[var(--tone-0a0a0a)]/95 p-4 flex flex-col justify-center items-center z-20 backdrop-blur-sm">
           <button
+            type="button"
             onClick={() => setIsEditing(false)}
             className="absolute top-3 right-3 text-[var(--tone-a3a3a3)] hover:text-[var(--tone-ffffff)]"
           >
@@ -154,6 +178,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
           <p className="text-[10px] text-[var(--tone-a3a3a3)] mb-3">
             Choose a photo from your device or paste a link
           </p>
+          {uploadError && <p role="alert" className="text-[10px] text-red-300 mb-2">{uploadError}</p>}
           <input
             type="text"
             placeholder="Paste image link (https://...)"
@@ -163,7 +188,9 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
           />
           <div className="flex gap-2 w-full mt-1">
             <button
+              type="button"
               onClick={handleSaveUrl}
+              disabled={uploading}
               className="flex-1 bg-[var(--tone-ffffff)] text-[var(--tone-000000)] text-xs font-semibold py-2 rounded hover:bg-[var(--tone-e5e5e5)] transition-colors"
             >
               Save Link
@@ -171,7 +198,7 @@ export const ImagePlaceholder: React.FC<ImagePlaceholderProps> = ({
             <label className="flex-1 cursor-pointer bg-[var(--tone-2a2a2a)] hover:bg-[var(--tone-333333)] text-[var(--tone-ffffff)] text-xs font-medium py-2 rounded text-center flex items-center justify-center gap-1 transition-colors">
               <Upload size={13} />
               <span>Upload File</span>
-              <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
         </div>

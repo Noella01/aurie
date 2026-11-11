@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, Check, ShoppingBag, ArrowRight } from 'lucide-react';
 import { Product, ProductColor } from '../types';
-import { ImagePlaceholder } from './ImagePlaceholder';
+import { ProductImageGallery } from './ProductImageGallery';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -57,13 +57,7 @@ const QuickViewContent: React.FC<QuickViewModalProps & { product: Product }> = (
         {/* Product Image placeholder */}
         <div className="bg-[var(--tone-171717)] p-6 flex items-center justify-center border-b md:border-b-0 md:border-r border-[var(--tone-262626)]">
           <div className="w-full max-w-sm">
-            <ImagePlaceholder
-              imageUrl={product.image_url}
-              alt={product.name}
-              category={product.category}
-              aspectRatio="portrait"
-              allowEdit={false}
-            />
+            <ProductImageGallery product={product} />
           </div>
         </div>
 

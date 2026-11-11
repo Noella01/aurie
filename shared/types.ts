@@ -6,6 +6,7 @@ export interface ProductColor {
 }
 
 export interface Product {
+  version?: number;
   id: string;
   name: string;
   tagline?: string;
@@ -13,6 +14,7 @@ export interface Product {
   subcategory: string;
   price: number; // in RWF
   image_url?: string;
+  image_urls?: string[];
   description: string;
   materials?: string;
   sizes: string[];
@@ -62,6 +64,11 @@ export interface OrderTimelineEvent {
 }
 
 export interface Order {
+  version?: number;
+  reservation_expires_at?: string;
+  reservation_state?: string;
+  review_required?: boolean;
+  environment?: 'test' | 'live';
   id: string;
   order_number: string;
   customer_name: string;
@@ -98,6 +105,9 @@ export type CustomRequestStatus =
   | 'CANCELLED';
 
 export interface CustomClothingRequest {
+  version?: number;
+  media_id?: string;
+  internal_notes?: string;
   id: string;
   request_number: string;
   full_name: string;
@@ -119,7 +129,8 @@ export interface CustomClothingRequest {
 
 export interface FlutterwaveConfig {
   public_key: string;
-  secret_key: string;
+  configured: boolean;
+  enabled_methods: string[];
   is_test_mode: boolean;
   merchant_name: string;
   currency: string;

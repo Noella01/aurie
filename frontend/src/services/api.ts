@@ -1,6 +1,8 @@
-import { Product, Order, CustomClothingRequest, FlutterwaveConfig, OrderStatus, PaymentStatus } from '../types';
+import { Product, Order, CustomClothingRequest, FlutterwaveConfig, OrderStatus, PaymentStatus, CustomRequestStatus } from '../types';
+import { apiRequest, isBackendConfigured } from './http';
+import { post } from './checkout';
 
-// Fallback initial products in case backend is loading
+// Sample catalogue for the standalone storefront; replace through the service below.
 export const INITIAL_PRODUCTS: Product[] = [
   {
     id: 'prod-001',
@@ -98,7 +100,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     subcategory: 'T-Shirts',
     price: 42000,
     image_url: '',
-    description: 'The defining everyday statement of AURIE. Built with heavyweight French Terry cotton, drop shoulder boxy fit, thick ribbed collar, and high-density tonal rubberized logo print on the chest.',
+    description: 'The defining everyday statement of MONVÉ. Built with heavyweight French Terry cotton, drop shoulder boxy fit, thick ribbed collar, and high-density tonal rubberized logo print on the chest.',
     materials: '100% Combed Heavy Cotton (320 GSM)',
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
     colors: [
@@ -180,293 +182,140 @@ export const INITIAL_PRODUCTS: Product[] = [
   }
 ];
 
-// Helper to broadcast changes locally across tabs
-const broadcastChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('lenos_sync') : null;
-
-// Event listeners list for real-time order updates
 type EventCallback = (data: any) => void;
-const eventListeners: Record<string, EventCallback[]> = {};
+const eventListeners = new Map<string, Set<EventCallback>>();
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let cursor = 0;
+let polling = false;
+let disconnected = false;
+const versions = new Map<string, number>();
+async function pollEvents() {
+  if (polling || !eventListeners.size || !isBackendConfigured) return;
+  polling = true;
+  try {
+    const payload = await apiRequest<{events:{type:string;data:any;version:number}[];cursor:number}>('/api/events?after=' + cursor);
+    for (const event of payload.events) {
+      const identity = event.type.split('_')[0] + ':' + event.data.id;
+      if ((versions.get(identity) || 0) > event.version) continue;
+      versions.set(identity, event.version);
+      triggerStoreEvent(event.type, event.data);
+    }
+    cursor = payload.cursor;
+    if (disconnected) triggerStoreEvent('store_reconnected', {});
+    disconnected = false;
+  } catch { disconnected = true; }
+  finally { polling = false; if (eventListeners.size) pollTimer = setTimeout(pollEvents, 5000); }
+}
+
+export function triggerStoreEvent(event: string, data: unknown) {
+  eventListeners.get(event)?.forEach(callback => callback(data));
+}
 
 export function subscribeToStoreEvents(event: string, callback: EventCallback) {
-  if (!eventListeners[event]) {
-    eventListeners[event] = [];
-  }
-  eventListeners[event].push(callback);
+  if (!eventListeners.has(event)) eventListeners.set(event, new Set());
+  eventListeners.get(event)!.add(callback);
+  if (isBackendConfigured && !pollTimer && !polling) pollTimer = setTimeout(pollEvents, 5000);
   return () => {
-    eventListeners[event] = eventListeners[event].filter((cb) => cb !== callback);
+    const callbacks = eventListeners.get(event);
+    callbacks?.delete(callback);
+    if (!callbacks?.size) eventListeners.delete(event);
+    if (!eventListeners.size) { clearTimeout(pollTimer); pollTimer = undefined; }
   };
 }
 
-export function triggerStoreEvent(event: string, data: any) {
-  if (eventListeners[event]) {
-    eventListeners[event].forEach((cb) => cb(data));
-  }
-  if (broadcastChannel) {
-    broadcastChannel.postMessage({ event, data });
-  }
+const jsonBody = (method: string, body: unknown): RequestInit => ({
+  method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+
+function orderedProductImages<T extends Partial<Product>>(product: T): T {
+  if (!('image_url' in product) && !('image_urls' in product)) return product;
+  const image_urls = Array.from(new Set([product.image_url, ...(product.image_urls || [])]
+    .map(url => url?.trim())
+    .filter((url): url is string => Boolean(url)))).slice(0, 7);
+  return { ...product, image_url: image_urls[0] || '', image_urls } as T;
 }
 
-if (broadcastChannel) {
-  broadcastChannel.onmessage = (msg) => {
-    const { event, data } = msg.data || {};
-    if (event && eventListeners[event]) {
-      eventListeners[event].forEach((cb) => cb(data));
-    }
-  };
-}
-
-// Connect to Backend SSE for live order tracking
-if (typeof window !== 'undefined') {
-  try {
-    const sse = new EventSource('/api/events');
-    sse.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        if (payload.type && eventListeners[payload.type]) {
-          eventListeners[payload.type].forEach((cb) => cb(payload.data));
-        }
-      } catch {
-        // ignore parse error
-      }
-    };
-    sse.onerror = () => {
-      // will auto retry
-    };
-  } catch {
-    // SSE optional fallback
-  }
-}
-
-// REST API calls with local cache fallback
+// These functions are the integration boundary for the replacement service.
+// Reads of private data and all writes require a configured service. They never
+// fabricate successful orders or restore data from the removed backend's cache.
 export async function getProducts(): Promise<Product[]> {
-  try {
-    const res = await fetch('/api/products');
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    localStorage.setItem('lenos_products', JSON.stringify(data));
-    return data;
-  } catch {
-    const cached = localStorage.getItem('lenos_products');
-    return cached ? JSON.parse(cached) : INITIAL_PRODUCTS;
-  }
+  const products = isBackendConfigured ? await apiRequest<Product[]>('/api/products') : INITIAL_PRODUCTS;
+  return products.map(product => orderedProductImages(product));
 }
 
-export async function createProduct(productData: Partial<Product>): Promise<Product> {
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(productData),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to create product');
-    const created = await res.json();
-    triggerStoreEvent('product_created', created);
-    return created;
+export async function createProduct(data: Partial<Product>): Promise<Product> {
+  const { id, created_at, version, ...input } = data;
+  const created = await apiRequest<Product>('/api/products', jsonBody('POST', orderedProductImages(input)));
+  triggerStoreEvent('product_created', created);
+  return created;
 }
 
 export async function updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
-    const res = await fetch(`/api/products/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to update product');
-    const updated = await res.json();
-    triggerStoreEvent('product_updated', updated);
-    return updated;
+  const { id: ignored, created_at, version, ...input } = updates;
+  delete (input as any).updated_at;
+  const current = version === undefined ? await apiRequest<Product>(`/api/products/${encodeURIComponent(id)}`) : null;
+  const updated = await apiRequest<Product>(`/api/products/${encodeURIComponent(id)}`, jsonBody('PUT', { ...orderedProductImages(input), expected_version: version ?? current?.version }));
+  triggerStoreEvent('product_updated', updated);
+  return updated;
 }
 
 export async function deleteProduct(id: string): Promise<boolean> {
-    const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error((await res.json()).error || 'Failed to delete product');
-    triggerStoreEvent('product_deleted', { id });
-    return true;
+  await apiRequest(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  triggerStoreEvent('product_deleted', { id });
+  return true;
 }
 
-// Orders API
-export async function getOrders(): Promise<Order[]> {
-  try {
-    const res = await fetch('/api/orders');
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    localStorage.setItem('lenos_orders', JSON.stringify(data));
-    return data;
-  } catch {
-    const cached = localStorage.getItem('lenos_orders');
-    return cached ? JSON.parse(cached) : [];
-  }
+export function getOrders(): Promise<Order[]> {
+  return apiRequest('/api/orders');
 }
 
-export async function createOrder(orderPayload: Partial<Order>): Promise<Order> {
-  try {
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderPayload),
-    });
-    if (!res.ok) throw new Error('Failed to create order');
-    const created = await res.json();
-    triggerStoreEvent('order_created', created);
-    return created;
-  } catch {
-    const count = (await getOrders()).length + 1;
-    const orderNumber = `LEN-2026-${String(count).padStart(4, '0')}`;
-    const now = new Date().toISOString();
-    const newOrder: Order = {
-      ...orderPayload,
-      id: `ord-${Date.now()}`,
-      order_number: orderNumber,
-      currency: 'RWF',
-      created_at: now,
-      updated_at: now,
-      timeline: [
-        {
-          status: orderPayload.status || 'PENDING',
-          timestamp: now,
-          title: 'Order Placed',
-          description: `Order ${orderNumber} received. Payment method: ${orderPayload.payment_method}`
-        }
-      ]
-    } as Order;
-
-    const current = await getOrders();
-    const updated = [newOrder, ...current];
-    localStorage.setItem('lenos_orders', JSON.stringify(updated));
-    triggerStoreEvent('order_created', newOrder);
-    return newOrder;
-  }
+export async function createOrder(data: Record<string, unknown>, key?: string): Promise<Order> {
+  const created = await post<Order>('/api/orders',data,key);
+  triggerStoreEvent('order_created',created);
+  return created;
 }
 
-export async function updateOrderStatus(
-  orderId: string,
-  status: OrderStatus,
-  paymentStatus?: PaymentStatus,
-  note?: string
-): Promise<Order> {
-  try {
-    const res = await fetch(`/api/orders/${orderId}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, payment_status: paymentStatus, note }),
-    });
-    if (!res.ok) throw new Error('Failed to update status');
-    const updated = await res.json();
-    triggerStoreEvent('order_updated', updated);
-    return updated;
-  } catch {
-    const current = await getOrders();
-    const idx = current.findIndex((o) => o.id === orderId);
-    if (idx !== -1) {
-      const now = new Date().toISOString();
-      current[idx].status = status;
-      if (paymentStatus) current[idx].payment_status = paymentStatus;
-      current[idx].updated_at = now;
-      current[idx].timeline.push({
-        status,
-        timestamp: now,
-        title: `Status: ${status}`,
-        description: note || `Order updated to ${status}`
-      });
-      localStorage.setItem('lenos_orders', JSON.stringify(current));
-      triggerStoreEvent('order_updated', current[idx]);
-      return current[idx];
-    }
-    throw new Error('Order not found');
-  }
+export async function updateOrderStatus(id: string, status: OrderStatus, paymentStatus?: PaymentStatus, note?: string): Promise<Order> {
+  if (paymentStatus) throw new Error('Payment status is controlled by the provider. Use refund or reconciliation actions.');
+  const current = await apiRequest<Order>(`/api/orders/${encodeURIComponent(id)}`);
+  const updated = await apiRequest<Order>(`/api/orders/${encodeURIComponent(id)}/status`, jsonBody('PATCH', { status, note, expected_version: current.version }));
+  triggerStoreEvent('order_updated', updated);
+  return updated;
 }
 
-// Custom Tailoring Requests
-export async function getCustomRequests(): Promise<CustomClothingRequest[]> {
-  try {
-    const res = await fetch('/api/custom-requests');
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-    localStorage.setItem('lenos_custom_requests', JSON.stringify(data));
-    return data;
-  } catch {
-    const cached = localStorage.getItem('lenos_custom_requests');
-    return cached ? JSON.parse(cached) : [];
-  }
+export function getCustomRequests(): Promise<CustomClothingRequest[]> {
+  return apiRequest('/api/custom-requests');
 }
 
-export async function createCustomRequest(data: Partial<CustomClothingRequest>): Promise<CustomClothingRequest> {
-  try {
-    const res = await fetch('/api/custom-requests', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('API error');
-    const created = await res.json();
-    triggerStoreEvent('custom_request_created', created);
-    return created;
-  } catch {
-    const count = (await getCustomRequests()).length + 1;
-    const reqNum = `REQ-2026-${String(count).padStart(3, '0')}`;
-    const newReq: CustomClothingRequest = {
-      ...data,
-      id: `req-${Date.now()}`,
-      request_number: reqNum,
-      status: 'NEW',
-      created_at: new Date().toISOString()
-    } as CustomClothingRequest;
-    const current = await getCustomRequests();
-    const updated = [newReq, ...current];
-    localStorage.setItem('lenos_custom_requests', JSON.stringify(updated));
-    triggerStoreEvent('custom_request_created', newReq);
-    return newReq;
-  }
+export async function createCustomRequest(data: Record<string, unknown>, key: string): Promise<CustomClothingRequest> {
+  const created = await post<CustomClothingRequest>('/api/custom-requests', data, key);
+  triggerStoreEvent('custom_request_created', created);
+  return created;
 }
 
-export async function updateCustomRequestStatus(
-  id: string,
-  status: any,
-  notes?: string
-): Promise<CustomClothingRequest> {
-  try {
-    const res = await fetch(`/api/custom-requests/${id}/status`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, notes }),
-    });
-    if (!res.ok) throw new Error('API error');
-    const updated = await res.json();
-    triggerStoreEvent('custom_request_updated', updated);
-    return updated;
-  } catch {
-    const current = await getCustomRequests();
-    const idx = current.findIndex((r) => r.id === id);
-    if (idx !== -1) {
-      current[idx].status = status;
-      if (notes) current[idx].notes = notes;
-      localStorage.setItem('lenos_custom_requests', JSON.stringify(current));
-      triggerStoreEvent('custom_request_updated', current[idx]);
-      return current[idx];
-    }
-    throw new Error('Custom request not found');
-  }
+export async function updateCustomRequestStatus(id: string, status: CustomRequestStatus, notes?: string): Promise<CustomClothingRequest> {
+  const current = (await getCustomRequests()).find(r => r.id === id);
+  const updated = await apiRequest<CustomClothingRequest>(`/api/custom-requests/${encodeURIComponent(id)}/status`, jsonBody('PATCH', { status, notes, expected_version: current?.version }));
+  triggerStoreEvent('custom_request_updated', updated);
+  return updated;
 }
 
-// Flutterwave config
-export async function getFlutterwaveConfig(): Promise<FlutterwaveConfig> {
-  try {
-    const res = await fetch('/api/flutterwave/config');
-    if (!res.ok) throw new Error('API error');
-    return await res.json();
-  } catch {
-    return {
-      public_key: 'FLWPUBK_TEST-SANDBOX-LENOS-RW-X',
-      secret_key: 'FLWSECK_TEST-SANDBOX-LENOS-RW-X',
-      is_test_mode: true,
-      merchant_name: 'AURIE Rwanda',
-      currency: 'RWF'
-    };
-  }
+export function getFlutterwaveConfig(): Promise<FlutterwaveConfig> {
+  return apiRequest('/api/flutterwave/config');
 }
 
 export async function updateFlutterwaveConfig(config: Partial<FlutterwaveConfig>): Promise<void> {
-  await fetch('/api/flutterwave/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  });
+  await apiRequest('/api/flutterwave/config', jsonBody('POST', { merchant_name: config.merchant_name }));
+}
+
+export async function adjustInventory(id: string, delta: number): Promise<Product> {
+  const updated = await post<Product>(`/api/admin/inventory/${encodeURIComponent(id)}/adjustments`, {delta,reason:'Admin inventory adjustment'}, crypto.randomUUID());
+  triggerStoreEvent('product_updated', updated);
+  return updated;
+}
+
+export function upsert<T extends {id:string;version?:number}>(items:T[], item:T):T[] {
+  const old=items.find(x=>x.id===item.id);
+  if(old && (old.version || 0)>(item.version || 0))return items;
+  return old ? items.map(x=>x.id===item.id?item:x) : [item,...items];
 }
