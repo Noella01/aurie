@@ -5,6 +5,10 @@ import type { CategoryType } from '../types';
 export function FashionHero({ onNavigate }: { onNavigate: (view: string, category?: CategoryType) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playbackBlocked, setPlaybackBlocked] = useState(false);
+  const isAppleMobile = typeof navigator !== 'undefined' && (
+    /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -35,9 +39,16 @@ export function FashionHero({ onNavigate }: { onNavigate: (view: string, categor
   return (
     <section className="monve-hero" aria-label="Monvé collection introduction">
       <div className="monve-hero-media">
-        <video ref={videoRef} className="monve-hero-video" autoPlay muted loop playsInline preload="auto" poster="/media/monve-hero-poster.jpg" tabIndex={-1} aria-hidden="true">
-          <source src="/media/monve-hero.mp4" type="video/mp4" />
-        </video>
+        {isAppleMobile ? (
+          <picture className="monve-hero-image" aria-hidden="true">
+            <source srcSet="/media/monve-hero.mp4" type="video/mp4" />
+            <img src="/media/monve-hero-poster.jpg" alt="" />
+          </picture>
+        ) : (
+          <video ref={videoRef} className="monve-hero-video" autoPlay muted loop playsInline preload="auto" poster="/media/monve-hero-poster.jpg" tabIndex={-1} aria-hidden="true">
+            <source src="/media/monve-hero.mp4" type="video/mp4" />
+          </video>
+        )}
         <div className="monve-hero-overlay" />
         {playbackBlocked && (
           <button className="monve-hero-playback" type="button" onClick={handleManualPlayback}>
