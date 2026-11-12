@@ -10,22 +10,15 @@ export function FashionHero({ onNavigate }: { onNavigate: (view: string, categor
     const video = videoRef.current;
     if (!video) return;
 
-    let active = true;
-    const attemptPlayback = () => {
-      void video.play().then(
-        () => active && setPlaybackBlocked(false),
-        () => active && setPlaybackBlocked(true),
-      );
-    };
     const handlePlaying = () => setPlaybackBlocked(false);
+    const fallbackTimer = window.setTimeout(() => {
+      if (video.paused) setPlaybackBlocked(true);
+    }, 5000);
 
-    video.addEventListener('canplay', attemptPlayback);
     video.addEventListener('playing', handlePlaying);
-    attemptPlayback();
 
     return () => {
-      active = false;
-      video.removeEventListener('canplay', attemptPlayback);
+      window.clearTimeout(fallbackTimer);
       video.removeEventListener('playing', handlePlaying);
     };
   }, []);
