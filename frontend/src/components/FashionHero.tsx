@@ -1,36 +1,57 @@
-import { useEffect, useRef } from 'react';
-import { ArrowRight, ArrowUpRight } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, ArrowUpRight, Play } from 'lucide-react';
 import type { CategoryType } from '../types';
 
 export function FashionHero({ onNavigate }: { onNavigate: (view: string, category?: CategoryType) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [playbackBlocked, setPlaybackBlocked] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const prefersDataSaving = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData;
-    const syncPlayback = () => {
-      if (motionPreference.matches || prefersDataSaving) {
-        video.pause();
-        return;
-      }
-      void video.play().catch(() => undefined);
+    let active = true;
+    const attemptPlayback = () => {
+      void video.play().then(
+        () => active && setPlaybackBlocked(false),
+        () => active && setPlaybackBlocked(true),
+      );
     };
+    const handlePlaying = () => setPlaybackBlocked(false);
 
-    syncPlayback();
-    motionPreference.addEventListener?.('change', syncPlayback);
-    return () => motionPreference.removeEventListener?.('change', syncPlayback);
+    video.addEventListener('canplay', attemptPlayback);
+    video.addEventListener('playing', handlePlaying);
+    attemptPlayback();
+
+    return () => {
+      active = false;
+      video.removeEventListener('canplay', attemptPlayback);
+      video.removeEventListener('playing', handlePlaying);
+    };
   }, []);
+
+  const handleManualPlayback = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    void video.play().then(
+      () => setPlaybackBlocked(false),
+      () => setPlaybackBlocked(true),
+    );
+  };
 
   return (
     <section className="monve-hero" aria-label="Monvé collection introduction">
-      <div className="monve-hero-media" aria-hidden="true">
-        <video ref={videoRef} className="monve-hero-video" muted loop playsInline preload="metadata" tabIndex={-1}>
+      <div className="monve-hero-media">
+        <video ref={videoRef} className="monve-hero-video" autoPlay muted loop playsInline preload="auto" poster="/media/monve-hero-poster.jpg" tabIndex={-1} aria-hidden="true">
           <source src="/media/monve-hero.mp4" type="video/mp4" />
         </video>
         <div className="monve-hero-overlay" />
+        {playbackBlocked && (
+          <button className="monve-hero-playback" type="button" onClick={handleManualPlayback}>
+            <Play size={14} aria-hidden="true" />
+            Play film
+          </button>
+        )}
       </div>
       <div className="monve-hero-copy">
         <p className="monve-hero-description">Contemporary silhouettes. <span>Cultural soul.</span><br />Pieces made to feel like you.</p>
