@@ -6,7 +6,7 @@ button:not(:disabled), a { cursor: pointer; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid currentColor; outline-offset: 5px; }
 button:disabled { cursor: not-allowed; }
 .monve-header { position: relative; z-index: 40; background: var(--tone-0a0a0a); color: var(--tone-f5f5f5); border-bottom: 1px solid var(--tone-222222); }
-.monve-header-home { background: var(--monve-paper); color: var(--brand-oxblood); border: 0; }
+.monve-header-home { position: absolute; inset: 0 0 auto; background: linear-gradient(180deg, rgb(75 20 23 / .22), rgb(75 20 23 / 0)); color: var(--brand-ivory); border: 0; }
 .monve-nav-row { min-height: var(--monve-header-height); padding: 20px 3.8%; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 28px; }
 .monve-nav-links { display: flex; gap: clamp(18px, 2vw, 34px); }
 .monve-nav-links button, .monve-nav-actions button { text-transform: uppercase; font-size: 10px; font-weight: 500; letter-spacing: .04em; }
@@ -19,14 +19,22 @@ button:disabled { cursor: not-allowed; }
 .monve-nav-actions button:hover { opacity: .6; }
 .monve-menu-toggle, .monve-icon-count { display: none; }
 .monve-mobile-menu { display: none; }
-/* A calm, type-led introduction to the Monvé collection. */
-.monve-hero { background: var(--brand-ivory); color: var(--brand-oxblood); position: relative; display: flex; align-items: flex-end; min-height: 0; height: calc(100vh - var(--monve-header-height)); height: calc(100svh - var(--monve-header-height)); overflow: hidden; }
-.monve-hero-copy { position: relative; z-index: 2; width: min(1020px, calc(100% - var(--monve-gutter) - var(--monve-gutter))); margin-left: var(--monve-gutter); padding: 0 0 clamp(42px, 7vh, 76px); }
-.monve-hero-copy > .monve-eyebrow { color: var(--brand-oxblood-soft); }
-.monve-hero-copy h1 { margin: 28px 0 28px; font: 500 clamp(76px, 11.5vw, 172px)/.82 var(--font-heading); letter-spacing: -.055em; }
-.monve-hero-copy h1 span { color: var(--brand-oxblood-soft); }
-.monve-hero-description { font-size: 14px; line-height: 1.8; letter-spacing: .015em; }
-.monve-hero-actions { position: static; display: flex; align-items: center; flex-wrap: wrap; gap: 28px; margin-top: 34px; }
+/* Cinematic introduction to the Monvé collection. */
+.monve-hero { position: relative; isolation: isolate; display: flex; align-items: flex-end; height: clamp(560px, 100svh, 920px); min-height: 560px; overflow: hidden; background: var(--brand-oxblood-deep); color: var(--brand-ivory); }
+.monve-hero-media, .monve-hero-video, .monve-hero-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+.monve-hero-media { z-index: 0; overflow: hidden; background: var(--brand-oxblood-deep); }
+.monve-hero-video { display: block; object-fit: cover; object-position: center 42%; }
+.monve-hero-overlay { background: linear-gradient(90deg, rgb(75 20 23 / .48) 0%, rgb(75 20 23 / .2) 48%, rgb(48 16 20 / .08) 100%), linear-gradient(0deg, rgb(48 16 20 / .5) 0%, transparent 62%); }
+.monve-hero-copy { position: relative; z-index: 1; width: min(760px, calc(100% - var(--monve-gutter) - var(--monve-gutter))); margin-left: var(--monve-gutter); padding: 0 0 clamp(42px, 7vh, 76px); }
+.monve-hero-copy > .monve-eyebrow { color: rgb(243 239 230 / .82); }
+.monve-hero-copy h1 { margin: 24px 0 22px; font: 500 clamp(72px, 10vw, 142px)/.82 var(--font-heading); letter-spacing: -.055em; }
+.monve-hero-copy h1 span { color: var(--brand-ivory); }
+.monve-hero-description { max-width: 450px; font-size: 14px; line-height: 1.8; letter-spacing: .015em; color: var(--brand-ivory); text-shadow: 0 1px 10px rgb(0 0 0 / .65); }
+.monve-hero-description span { color: var(--brand-ivory); }
+.monve-hero-actions { position: static; display: flex; align-items: center; flex-wrap: wrap; gap: 28px; margin-top: 30px; }
+.monve-hero .monve-button { background: var(--brand-ivory); border-color: var(--brand-ivory); color: var(--brand-oxblood); box-shadow: 0 8px 24px rgb(24 7 9 / .18); }
+.monve-hero .monve-button:hover { background: var(--brand-oxblood); border-color: var(--brand-oxblood); color: var(--brand-ivory); }
+.monve-hero .monve-text-link { color: var(--brand-ivory); }
 .monve-button { display: inline-flex; align-items: center; justify-content: center; gap: 24px; min-height: 44px; padding: 14px 24px; background: var(--brand-oxblood); border: 1px solid var(--brand-oxblood); color: var(--brand-ivory); font-size: 10px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; transition: background .2s, color .2s; }
 .monve-button:hover { background: var(--brand-ivory); color: var(--brand-oxblood); }
 .monve-text-link { display: inline-flex; align-items: center; gap: 12px; padding: 12px 0; font-size: 10px; font-weight: 600; letter-spacing: .035em; text-transform: uppercase; }
@@ -132,7 +140,7 @@ button:disabled { cursor: not-allowed; }
   .monve-collection-arrow { display: none; }
   .monve-collection-image { width: 78px; height: 105px; }
   .monve-collection h2 { font-size: 14px; }
-  .monve-product-grid { gap: 16px; }
+  .monve-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 }
 @media (max-width: 800px) {
   :root { --monve-header-height: 80px; }
@@ -145,12 +153,16 @@ button:disabled { cursor: not-allowed; }
   .monve-mobile-menu > button { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 13px 0; font-size: 16px; border-bottom: 1px solid var(--tone-222222); }
   .monve-mobile-utilities { display: flex; flex-wrap: wrap; gap: 20px; padding-top: 24px; }
   .monve-mobile-utilities button { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 5px 0; }
-  .monve-collection-strip { padding: 26px 22px; gap: 20px; }
+  .monve-collection-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 26px 22px; gap: 20px; }
   .monve-collection { flex-direction: column; align-items: flex-start; gap: 12px; }
   .monve-collection + .monve-collection { padding-left: 18%; }
   .monve-collection-image { width: 100%; height: 130px; }
   .monve-collection p { font-size: 10px; margin: 7px 0 12px; }
   .monve-collection span { font-size: 8px; }
+  .monve-hero { height: clamp(560px, 100svh, 820px); min-height: 560px; }
+  .monve-hero-copy { width: min(680px, calc(100% - 44px)); margin-left: 22px; }
+  .monve-hero-copy h1 { font-size: clamp(68px, 12vw, 100px); }
+  .monve-hero-overlay { background: linear-gradient(90deg, rgb(75 20 23 / .48), rgb(75 20 23 / .16)), linear-gradient(0deg, rgb(48 16 20 / .58) 0%, rgb(75 20 23 / .06) 78%); }
   .monve-season { min-height: 365px; height: 365px; }
   .monve-season-copy { padding: 45px 22px; }
   .monve-season h2 { font-size: 58px; }
@@ -169,13 +181,31 @@ button:disabled { cursor: not-allowed; }
   .monve-footer-top { gap: 24px; grid-template-columns: 1.25fr .85fr 1fr; padding-bottom: 20px; }
   .monve-footer-manifesto h2 { font-size: 27px; }
 }
+@media (max-width: 640px) {
+  .monve-collection-strip { grid-template-columns: 1fr; gap: 0; padding: 14px 20px; }
+  .monve-collection { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 13px 0; }
+  .monve-collection + .monve-collection { padding-left: 0; border-left: 0; border-top: 1px solid rgb(243 239 230 / .28); }
+  .monve-collection-image { width: 72px; height: 88px; }
+  .monve-collection p { min-height: 0; margin: 6px 0 8px; }
+  .monve-collection-arrow { display: block; }
+  .monve-section-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .monve-atelier { grid-template-columns: 1fr; }
+  .monve-atelier-image { height: 300px; }
+  .monve-atelier-copy { padding: 38px 22px 44px; }
+  .monve-atelier h2 { font-size: clamp(34px, 9vw, 42px); }
+  .monve-footer-top { grid-template-columns: 1fr 1fr; }
+  .monve-footer-manifesto { grid-column: 1 / -1; }
+}
 @media (max-width: 480px) {
   .monve-button { font-size: 9px; padding: 13px 17px; gap: 14px; }
-  .monve-collection-strip { gap: 14px; }
-  .monve-collection + .monve-collection { padding-left: 14%; }
-  .monve-collection-image { height: 105px; }
+  .monve-hero { height: clamp(560px, 100svh, 760px); min-height: 560px; }
+  .monve-hero-copy { width: calc(100% - 40px); margin-left: 20px; padding: 28px 0 38px; }
+  .monve-hero-copy h1 { font-size: clamp(56px, 15.5vw, 76px); margin: 18px 0; }
+  .monve-hero-description { font-size: 12px; line-height: 1.7; }
+  .monve-hero-actions { align-items: flex-start; flex-direction: column; gap: 8px; margin-top: 20px; }
+  .monve-hero-overlay { background: linear-gradient(90deg, rgb(75 20 23 / .4), rgb(75 20 23 / .14)), linear-gradient(0deg, rgb(48 16 20 / .62) 0%, rgb(75 20 23 / .1) 84%); }
   .monve-collection h2 { font-size: 12px; }
-  .monve-collection p { min-height: 32px; font-size: 9px; }
+  .monve-collection p { font-size: 9px; }
   .monve-season-copy { z-index: 1; }
   .monve-season h2 { font-size: 51px; }
   .monve-season-copy > p:not(.monve-eyebrow) { font-size: 11px; }
@@ -188,12 +218,7 @@ button:disabled { cursor: not-allowed; }
   .monve-product-sizes button { min-width: 27px; min-height: 30px; }
   .monve-product-colors button { width: 15px; height: 15px; }
   .monve-product-badge { top: 12px; left: 10px; font-size: 7px; }
-  .monve-atelier { grid-template-columns: 1fr; }
-  .monve-atelier-image { height: 390px; }
-  .monve-atelier-copy { padding: 45px 22px; }
-  .monve-atelier h2 { font-size: 38px; }
-  .monve-footer-top { grid-template-columns: 1fr 1fr; gap: 24px 22px; }
-  .monve-footer-manifesto { grid-column: 1 / -1; }
+  .monve-footer-top { gap: 24px 22px; }
   .monve-footer-signature { margin-bottom: 9px; }
   .monve-footer-brand img { width: 42px; }
   .monve-footer-manifesto h2 { font-size: 29px; }
@@ -207,14 +232,16 @@ button:disabled { cursor: not-allowed; }
 }
 
 /* Monvé visual identity: sculptural typography, an oxblood atelier, and paper-like ivory. */
-.monve-header-home { color: var(--brand-oxblood); }
+.monve-header-home { color: var(--brand-ivory); }
 .monve-brand { color: currentColor; }
 .monve-brand-mark { display: block; width: 96px; height: auto; flex: 0 0 auto; }
 .monve-nav-links button, .monve-nav-actions button, .monve-text-link { font-family: var(--font-sans); }
 .monve-nav-links button[aria-current="page"], .monve-mobile-menu button[aria-current="page"] { color: var(--brand-oxblood-soft); }
 .monve-menu-toggle, .monve-icon-button { color: currentColor; }
+.monve-header-home .monve-nav-links button:hover, .monve-header-home .monve-nav-actions button:hover { color: #e6c4bb; opacity: 1; }
 .monve-header-home .monve-icon-count { background: var(--brand-oxblood); color: var(--brand-ivory); }
-.monve-hero { background: var(--brand-ivory); color: var(--brand-oxblood); }
+.monve-header-home .monve-brand-mark { filter: brightness(0) invert(1) drop-shadow(0 1px 8px rgb(75 20 23 / .28)); }
+.monve-hero { color: var(--brand-ivory); }
 .monve-button { background: var(--brand-oxblood); border-color: var(--brand-oxblood); color: var(--brand-ivory); font-family: var(--font-sans); }
 .monve-button:hover { background: var(--brand-ivory); border-color: var(--brand-oxblood); color: var(--brand-oxblood); }
 .monve-collection-strip { background: var(--brand-oxblood); color: var(--brand-ivory); }
@@ -239,18 +266,9 @@ button:disabled { cursor: not-allowed; }
 .monve-product-colors button { border-color: var(--brand-oxblood-soft); }
 @media (max-width: 800px) {
   .monve-brand-mark { width: 74px; height: auto; }
-  .monve-hero { min-height: 0; height: calc(100vh - var(--monve-header-height)); height: calc(100svh - var(--monve-header-height)); }
-  .monve-hero-copy h1 { font-size: clamp(74px, 14vw, 118px); }
-  .monve-hero-description { font-size: 13px; }
-  .monve-hero-actions { gap: 18px; margin-top: 28px; }
 }
 @media (max-width: 480px) {
   .monve-brand-mark { width: 58px; height: auto; }
-  .monve-hero { min-height: 0; height: calc(100vh - var(--monve-header-height)); height: calc(100svh - var(--monve-header-height)); }
-  .monve-hero-copy { width: calc(100% - 44px); margin-left: 22px; padding: 30px 0 55px; }
-  .monve-hero-copy h1 { font-size: clamp(66px, 16vw, 92px); margin: 25px 0; }
-  .monve-hero-description { font-size: 12px; }
-  .monve-hero-actions { align-items: flex-start; flex-direction: column; gap: 9px; margin-top: 24px; }
   .monve-edit-filters { gap: 6px; margin-bottom: 20px; }
   .monve-edit-filters button { min-height: 34px; padding: 7px 10px; font-size: 8px; }
 }
@@ -262,5 +280,5 @@ button:disabled { cursor: not-allowed; }
 @media (max-width: 480px) and (max-height: 600px) {
   .monve-hero-copy { padding-top: 12px; padding-bottom: 12px; }
   .monve-hero-copy h1 { font-size: clamp(48px, 11vh, 66px); margin: 14px 0; }
-  .monve-hero-actions { flex-direction: row; align-items: center; gap: 12px; margin-top: 12px; }
+  .monve-hero-actions { flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; }
 }

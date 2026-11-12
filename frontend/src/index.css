@@ -13,7 +13,7 @@
 .account-link { display: block; text-decoration: underline; text-underline-offset: 4px; font-size: 13px; margin-top: 20px; cursor: pointer; }
 .account-muted { color: var(--tone-a3a3a3); font-size: 12px !important; }
 .account-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 20px; }
-.account-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 36px 0; }
+.account-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 36px 0; }
 .account-summary button { padding: 24px; text-align: left; border: 1px solid var(--tone-2a2a2a); border-radius: 12px; cursor: pointer; }
 .account-summary strong { display: block; font-size: 30px; margin-bottom: 12px; }
 .account-summary span { font-size: 12px; }
@@ -31,7 +31,9 @@
   .account-auth { grid-template-columns: 1fr; gap: 28px; }
   .account-page { padding: 32px 16px 60px; }
   .account-summary { gap: 8px; }
-  .account-summary button { padding: 12px; }
+  .account-summary button { min-width: 0; padding: 12px; overflow-wrap: anywhere; }
+  .account-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .account-tabs { flex-wrap: wrap; gap: 12px 20px; }
 }
 @layer base {
   :root {
